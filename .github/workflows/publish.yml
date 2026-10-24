@@ -1,0 +1,89 @@
+name: Publish motivational short
+
+on:
+  schedule:
+    # Daily at 13:00 UTC (≈ 9am US-East / 2pm London). Add more lines for more posts per day.
+    - cron: "0 13 * * *"
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: "Upload to YouTube? (false = render only, download from artifacts)"
+        type: boolean
+        default: true
+      privacy:
+        description: "Override privacy (private | unlisted | public); empty = config.yaml"
+        type: string
+        default: ""
+
+concurrency:
+  group: publish-short
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore YouTube credentials
+        if: ${{ github.event_name == 'schedule' || inputs.upload }}
+        env:
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+        run: |
+          if [ -z "$YOUTUBE_TOKEN_JSON" ]; then
+            echo "::error::YOUTUBE_TOKEN_JSON secret is missing. Run 'python -m motivate authorize' locally and add token.json as a secret."
+            exit 1
+          fi
+          printf '%s' "$YOUTUBE_TOKEN_JSON" > token.json
+
+      - name: Generate and publish
+        env:
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          UPLOAD: ${{ github.event_name == 'schedule' || inputs.upload }}
+          PRIVACY: ${{ inputs.privacy }}
+        run: |
+          FLAGS=""
+          [ "$UPLOAD" = "true" ] || FLAGS="$FLAGS --no-upload"
+          [ -z "$PRIVACY" ] || FLAGS="$FLAGS --privacy $PRIVACY"
+          python -m motivate run $FLAGS
+
+      - name: Keep the rendered video for 7 days
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: short-${{ github.run_number }}
+          path: |
+            out/**/short.mp4
+            out/**/metadata.json
+            out/**/thumb.jpg
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Commit run history
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state/history.json
+          if git diff --cached --quiet; then
+            echo "no state changes"
+          else
+            git commit -m "chore: record published short [skip ci]"
+            git pull --rebase origin "${GITHUB_REF_NAME}" || true
+            git push
+          fi

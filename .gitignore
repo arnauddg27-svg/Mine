@@ -1,0 +1,17 @@
+# secrets
+client_secret.json
+token.json
+.env
+
+# generated
+out/
+.cache/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# user-supplied media (keep the folders, not the files)
+assets/music/*
+!assets/music/README.md
+assets/backgrounds/*
+!assets/backgrounds/README.md

@@ -1,0 +1,93 @@
+# Channel identity (shown as a small watermark and used in descriptions).
+channel:
+  name: "Daily Drive"
+  handle: "@dailydrive"      # set to "" to hide the watermark
+  language: en
+
+# Where the words come from.
+script:
+  source: bank               # bank = public-domain quotes | claude = original AI scripts | mixed = both
+  hook: true                 # speak a short attention line before the quote
+  cta: "Follow for your daily dose of motivation."   # "" to disable
+  max_quote_words: 36
+
+# Optional Claude script writer (needs ANTHROPIC_API_KEY; only used when script.source is claude/mixed).
+llm:
+  model: claude-opus-5-5
+  effort: medium
+  mixed_ratio: 0.5
+  themes:
+    - discipline when motivation fades
+    - starting before you feel ready
+    - consistency over intensity
+    - handling failure without quitting
+    - comparison and running your own race
+    - doing the boring work
+    - mornings and how you start the day
+    - patience with slow progress
+    - fear of judgment
+    - finishing what you start
+
+# Voice (run `python -m motivate voices` to list options).
+voice:
+  name: en-US-GuyNeural      # calm male; try en-US-ChristopherNeural, en-GB-RyanNeural, en-US-AriaNeural
+  rate: "-6%"
+  pitch: "-2Hz"
+  pause_after:               # seconds of silence after each segment
+    hook: 0.55
+    quote: 0.7
+    body: 0.6
+    cta: 0.2
+  default_pause: 0.5
+
+captions:
+  style: karaoke             # karaoke = current word highlighted | block = plain pages
+  font: Inter                # bundled in assets/fonts
+  font_size: 92
+  words_per_page: 3
+  uppercase: true
+  text_color: "FFFFFF"
+  highlight_color: "FFD600"
+  outline_color: "000000"
+  pop_scale: 108
+  show_author: true
+  show_brand: true
+
+background:
+  sources: [pexels, local, gradient]   # tried in order; gradient always works offline
+  queries:                              # Pexels search terms (portrait stock video)
+    - mountain sunrise aerial
+    - ocean waves slow motion
+    - city night rain
+    - forest fog
+    - runner training dawn
+    - storm clouds timelapse
+    - highway night lights
+    - snow mountain drone
+    - gym workout dark
+    - campfire night
+  cache_keep: 24
+
+music:
+  enabled: true              # drop royalty-free tracks into assets/music (mp3/wav)
+  volume: 0.12
+
+video:
+  width: 1080
+  height: 1920
+  fps: 30
+  tail_seconds: 0.8
+  max_seconds: 59
+  crf: 19
+  preset: medium
+  darken: 0.08
+
+youtube:
+  privacy: public            # private | unlisted | public  (start with private to test)
+  category_id: "22"          # 22 = People & Blogs, 27 = Education, 24 = Entertainment
+  title_suffix: " #shorts"
+  tags: [motivation, motivational video, mindset, discipline, self improvement, stoicism, daily motivation, shorts]
+  hashtags: [motivation, mindset, discipline, shorts]
+  made_for_kids: false
+  notify_subscribers: true
+  ai_disclosure: true        # append a one-line AI voiceover note to descriptions
