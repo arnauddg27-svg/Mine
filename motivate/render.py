@@ -54,7 +54,8 @@ def render(
     crf = int(get(cfg, "video.crf", 19))
     preset = get(cfg, "video.preset", "medium")
     darken = float(get(cfg, "video.darken", 0.08))
-    music_vol = float(get(cfg, "music.volume", 0.12))
+    music_vol = float(get(cfg, "music.volume", 0.18))
+    duck = bool(get(cfg, "music.duck", True))
     total = round(voice.duration + tail, 3)
     max_seconds = float(get(cfg, "video.max_seconds", 59))
     if total > max_seconds:
@@ -79,15 +80,25 @@ def render(
         f"{grade}"
         f"subtitles=filename='{esc(ass_path)}':fontsdir='{esc(fonts_dir)}'[v]"
     )
-    af = f"[1:a]loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,apad=pad_dur={tail:.3f}[voice]"
+    voice_chain = f"[1:a]loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,aformat=channel_layouts=stereo,apad=pad_dur={tail:.3f}"
     if music_path:
         fade_out_start = max(total - 2.5, 0.0)
-        af += (
-            f";[2:a]aresample=48000,volume={music_vol:.3f},afade=t=in:st=0:d=1.5,afade=t=out:st={fade_out_start:.3f}:d=2.5[music]"
-            f";[voice][music]amix=inputs=2:duration=first:normalize=0[a]"
+        music_chain = (
+            f"[2:a]aresample=48000,aformat=channel_layouts=stereo,volume={music_vol:.3f},"
+            f"afade=t=in:st=0:d=1.5,afade=t=out:st={fade_out_start:.3f}:d=2.5"
         )
+        if duck:
+            # Sidechain: the voice drives a compressor on the music (about -8 dB while speaking).
+            af = (
+                f"{voice_chain},asplit=2[voice][key];{music_chain}[music];"
+                f"[music][key]sidechaincompress=threshold=0.03:ratio=6:attack=20:release=350[bed];"
+                f"[voice][bed]amix=inputs=2:duration=first:normalize=0[a]"
+            )
+        else:
+            af = f"{voice_chain}[voice];{music_chain}[music];[voice][music]amix=inputs=2:duration=first:normalize=0[a]"
         amap = "[a]"
     else:
+        af = f"{voice_chain}[voice]"
         amap = "[voice]"
 
     args += [
@@ -101,13 +112,14 @@ def render(
         str(out_path),
     ]
     log.info("rendering %s (%.1fs)", out_path.name, total)
-    proc = subprocess.run(args, capture_output=True, text=True)
+    timeout = int(get(cfg, "video.render_timeout", 900))
+    proc = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
     if proc.returncode != 0 and background.kind != "video":
         # Older ffmpeg builds lack some `gradients` options; fall back to a flat colour.
         log.warning("gradient background failed (%s); retrying with a flat colour", proc.stderr.strip().splitlines()[-1:] or "?")
         idx = args.index("-i", args.index("lavfi"))
         args[idx + 1] = f"color=c=0x1b1f4a:s={w}x{h}:r={fps}:d={total + 1:.2f}"
-        proc = subprocess.run(args, capture_output=True, text=True)
+        proc = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
     if proc.returncode != 0:
         raise RuntimeError(f"ffmpeg failed:\n{proc.stderr[-4000:]}")
     return out_path, ffprobe_duration(out_path)
@@ -117,5 +129,6 @@ def thumbnail(video_path: Path, at: float, out_path: Path) -> Path:
     subprocess.run(
         ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{at:.2f}", "-i", str(video_path), "-frames:v", "1", "-q:v", "2", str(out_path)],
         check=True,
+        timeout=120,
     )
     return out_path

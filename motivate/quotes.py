@@ -13,6 +13,7 @@ class Quote:
     text: str
     author: str
     tags: list[str] = field(default_factory=list)
+    source: str = ""  # work the quote comes from, shown in the description
 
     @property
     def id(self) -> str:
@@ -25,7 +26,10 @@ class Quote:
 
 def load_bank(path: str | Path) -> list[Quote]:
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
-    bank = [Quote(q["text"].strip(), q.get("author", "Unknown").strip(), list(q.get("tags", []))) for q in raw]
+    bank = [
+        Quote(q["text"].strip(), q.get("author", "Unknown").strip(), list(q.get("tags", [])), (q.get("source") or "").strip())
+        for q in raw
+    ]
     if not bank:
         raise ValueError(f"quote bank {path} is empty")
     return bank

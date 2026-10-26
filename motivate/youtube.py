@@ -12,6 +12,23 @@ SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 RETRIABLE = {500, 502, 503, 504}
 
 
+def _error_reason(exc) -> str:
+    """Pull the machine-readable reason (e.g. 'quotaExceeded') out of a googleapiclient HttpError."""
+    import json
+
+    content = exc.content.decode("utf-8", "ignore") if isinstance(exc.content, bytes) else str(exc.content or "")
+    try:
+        errors = json.loads(content).get("error", {}).get("errors", [])
+        if errors and errors[0].get("reason"):
+            return str(errors[0]["reason"])
+    except (ValueError, AttributeError):
+        pass
+    for known in ("quotaExceeded", "dailyLimitExceeded", "uploadLimitExceeded"):
+        if known in content:
+            return known
+    return ""
+
+
 def ensure_token_file(token_path: Path) -> None:
     """In CI the token arrives as the YOUTUBE_TOKEN_JSON secret; materialize it."""
     if token_path.exists():
@@ -115,11 +132,16 @@ def upload_video(
             if progress:
                 log.info("upload %.0f%%", progress.progress() * 100)
         except HttpError as exc:
-            text = str(exc)
-            if exc.resp.status == 403 and "quotaExceeded" in text:
+            reason = _error_reason(exc)
+            if reason in ("quotaExceeded", "dailyLimitExceeded"):
                 raise RuntimeError(
-                    "YouTube Data API daily quota exhausted (10,000 units/day; each upload costs ~1,600). "
+                    "YouTube Data API daily quota exhausted (10,000 units/day by default). "
                     "Wait for the midnight Pacific reset or request a quota increase in Google Cloud Console."
+                ) from exc
+            if reason == "uploadLimitExceeded":
+                raise RuntimeError(
+                    "YouTube refused the upload: this channel hit its daily upload limit. Verify the channel "
+                    "(youtube.com/verify) to raise it, or post less often."
                 ) from exc
             if exc.resp.status in RETRIABLE and attempt < 6:
                 attempt += 1

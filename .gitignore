@@ -10,8 +10,5 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
-# user-supplied media (keep the folders, not the files)
-assets/music/*
-!assets/music/README.md
-assets/backgrounds/*
-!assets/backgrounds/README.md
+# user-supplied media in assets/music and assets/backgrounds is NOT ignored on purpose:
+# scheduled GitHub runs only see what is committed.

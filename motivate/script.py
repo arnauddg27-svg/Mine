@@ -50,10 +50,17 @@ class Script:
     quote_id: str | None = None
     source: str = "bank"
     theme: str | None = None
+    footage_query: str | None = None  # stock-footage search term chosen for this script
     extra: dict = field(default_factory=dict)
 
     def spoken(self) -> list[Segment]:
         return [s for s in self.segments if s.text.strip()]
+
+
+def tag_cost(tag: str) -> int:
+    """Characters YouTube counts toward its 500-char tag limit: a separating comma,
+    plus two quote marks around any tag that contains a space."""
+    return len(tag) + 1 + (2 if " " in tag else 0)
 
 
 def clean_tags(tags: list[str], limit: int = MAX_TAGS_CHARS) -> list[str]:
@@ -61,15 +68,21 @@ def clean_tags(tags: list[str], limit: int = MAX_TAGS_CHARS) -> list[str]:
     seen: set[str] = set()
     total = 0
     for t in tags:
-        t = re.sub(r"[#<>]", "", str(t)).strip().lower()
+        t = re.sub(r"[#<>,\"]", "", str(t)).strip().lower()
+        t = re.sub(r"\s+", " ", t)
         if not t or t in seen or len(t) > 30:
             continue
-        if total + len(t) + 2 > limit:
-            break
+        if total + tag_cost(t) > limit:
+            continue  # a shorter tag later in the list may still fit
         seen.add(t)
         out.append(t)
-        total += len(t) + 2
+        total += tag_cost(t)
     return out
+
+
+def clean_text(text: str) -> str:
+    """YouTube rejects < and > in titles and descriptions."""
+    return re.sub(r"[<>]", "", text)
 
 
 def safe_title(title: str, suffix: str = "") -> str:
@@ -117,14 +130,15 @@ def from_quote(q: Quote, cfg: dict, rng: random.Random, avoid_hooks: list[str] |
     base_tags = list(get(cfg, "youtube.tags", []))
     tags = clean_tags(base_tags + q.tags + [q.author, "quotes", "motivational quotes"])
     hashtags = " ".join(f"#{t.replace(' ', '')}" for t in get(cfg, "youtube.hashtags", ["motivation", "mindset", "shorts"]))
-    lines = [f'"{q.text}"', f"— {q.author}", ""]
+    attribution = f"— {q.author}, {q.source}" if q.source else f"— {q.author}"
+    lines = [f'"{q.text}"', attribution, ""]
     if handle:
         lines.append(f"Follow {handle} for daily motivation.")
     lines += ["", hashtags]
     return Script(
         segments=segments,
         title=title_from_quote(q, suffix),
-        description="\n".join(lines),
+        description=clean_text("\n".join(lines)),
         tags=tags,
         author=q.author,
         quote_id=q.id,
@@ -133,19 +147,19 @@ def from_quote(q: Quote, cfg: dict, rng: random.Random, avoid_hooks: list[str] |
     )
 
 
-def from_llm(data: dict, cfg: dict, theme: str) -> Script:
+def from_llm(data: dict, cfg: dict, theme: str, rng: random.Random | None = None) -> Script:
     """Build a Script from the JSON the LLM returned (validated upstream)."""
     segments: list[Segment] = []
     if data.get("hook"):
         segments.append(Segment("hook", data["hook"].strip()))
     segments.append(Segment("body", data["body"].strip()))
-    cta = pick_cta(cfg, random.Random(hash(data["body"])))
+    cta = pick_cta(cfg, rng or random.Random())
     if cta:
         segments.append(Segment("cta", cta))
     suffix = get(cfg, "youtube.title_suffix", " #shorts")
     handle = get(cfg, "channel.handle", "")
     hashtags = " ".join(f"#{t.replace(' ', '')}" for t in get(cfg, "youtube.hashtags", ["motivation", "mindset", "shorts"]))
-    desc = data.get("description", "").strip()
+    desc = clean_text(data.get("description", "")).strip()
     if handle:
         desc += f"\n\nFollow {handle} for daily motivation."
     desc += f"\n\n{hashtags}"
@@ -159,4 +173,5 @@ def from_llm(data: dict, cfg: dict, theme: str) -> Script:
         quote_id=None,
         source="claude",
         theme=theme,
+        footage_query=(data.get("footage") or "").strip() or None,
     )

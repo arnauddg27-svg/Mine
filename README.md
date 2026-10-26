@@ -12,8 +12,10 @@ Everything is original or licensed: public-domain quotes (or scripts Claude writ
 
 - 15–30 s, 9:16, 30 fps, H.264 + AAC, ready for Shorts.
 - Spoken: a short hook ("Read this before you give up.") → the quote → a call to action.
-- Captions: three words per page, the spoken word highlighted in yellow, author shown under the quote, channel handle as a small watermark.
-- Background: a portrait stock clip matching a random search term (mountain sunrise, city rain, runner at dawn…), darkened and vignetted for legibility. Offline fallback is a slowly moving dark gradient, so the pipeline never fails for lack of footage.
+- Captions: three words per page, the spoken word highlighted in yellow, author shown under the quote, channel handle as a small watermark. All text stays inside the Shorts safe area, clear of the title block at the bottom and the like/comment buttons on the right.
+- Background: a portrait stock clip matched to the quote's theme (storm clouds for resilience, a runner at dawn for persistence…), darkened and vignetted for legibility. Offline fallback is a slowly moving dark gradient, so the pipeline never fails for lack of footage.
+- Audio: voice normalized to -16 LUFS; music, if you add any, dips under the voice and comes back up in the pauses.
+- Description: the quote with its author and source work ("— Seneca, Letters to Lucilius 104"), so viewers can check it.
 
 ## Quick start (local)
 
@@ -34,7 +36,7 @@ export PEXELS_API_KEY=...
 python -m motivate run --no-upload
 ```
 
-Drop any royalty-free `.mp3` files into `assets/music/` and they are mixed under the voice automatically.
+Drop any royalty-free `.mp3` files into `assets/music/` and they are mixed under the voice automatically. Commit them: the scheduled GitHub run only sees files that are in the repository (GitHub rejects single files over 100 MB, which music never comes near).
 
 ## Connect YouTube (one-time, ~10 minutes)
 
@@ -92,7 +94,8 @@ Any machine with cron works too:
 | `background.tag_queries` | search terms per quote theme (resilience, courage, …) so footage matches the message; clips used in the last 30 videos are avoided |
 | `background.pexels_pages` | pick a random Pexels result page from 1..N (more variety per search term) |
 | `background.local_dir`, `music.dir` | override the folders scanned for your own clips and music |
-| `music.enabled`, `music.volume` | background music mix |
+| `music.enabled`, `music.volume` | background music on/off and its level between phrases |
+| `music.duck` | dip the music about 8 dB while the voice speaks (default on) |
 | `video.max_seconds` | hard cap (default 59 s, raise up to 180 for longer Shorts) |
 | `youtube.privacy` | `private` while testing, then `public` |
 | `youtube.tags`, `hashtags`, `category_id` | upload metadata |
@@ -103,7 +106,7 @@ Environment overrides: `MOTIVATE_PRIVACY`, `MOTIVATE_VOICE`, `MOTIVATE_SCRIPT_SO
 
 ## Original scripts with Claude (optional)
 
-Set `script.source: claude` (or `mixed`) and `ANTHROPIC_API_KEY`. Each run asks Claude Opus 5.5 for a 45–75 word original monologue on a rotating theme (discipline, starting before you feel ready, comparison, …), plus a title, description and tags, returned as validated JSON. Recent titles are passed in so topics do not repeat. Server-side refusal fallback is enabled by default; if the request is declined or the API is unreachable the run silently uses the quote bank instead, so the schedule never breaks. Expect roughly one to three cents per video (thinking tokens are billed as output).
+Set `script.source: claude` (or `mixed`) and `ANTHROPIC_API_KEY`. Each run asks Claude Opus 5.5 for a 45–75 word original monologue on a rotating theme (discipline, starting before you feel ready, comparison, …), plus a title, description, tags and a stock-footage search phrase that fits the mood, returned as validated JSON. Recent titles are passed in so topics do not repeat. Server-side refusal fallback is enabled by default; if the request is declined or the API is unreachable the run silently uses the quote bank instead, so the schedule never breaks. Expect roughly one to three cents per video (thinking tokens are billed as output).
 
 ## Commands
 
@@ -112,7 +115,7 @@ python -m motivate run [--no-upload] [--record] [--privacy private|unlisted|publ
 python -m motivate authorize [--client-secret PATH] [--token PATH] [--no-browser]
 python -m motivate voices [--locale en-GB]
 python -m motivate stats
-python -m pytest            # unit tests (no network needed)
+python -m pytest            # 30 tests, no network needed (includes a full offline render)
 ```
 
 `--no-upload` renders without touching `state/history.json`, so previews never use up quotes. Add `--record` when you render for manual upload and want the quote counted.
@@ -133,7 +136,7 @@ motivate/
   youtube.py      OAuth + resumable upload
   state.py        state/history.json
 assets/
-  quotes.json     79 public-domain quotes (edit freely)
+  quotes.json     public-domain quotes, each with author and source (edit freely)
   fonts/          Inter (OFL)
   music/          your royalty-free tracks
   backgrounds/    your own vertical clips (optional)
@@ -144,6 +147,8 @@ assets/
 
 - No Pexels key or Pexels down → gradient background, run continues.
 - Microsoft's TTS endpoint refuses the runner (happens occasionally for datacenter IPs) → four attempts with growing backoff, then the run fails; the next scheduled run retries.
+- A stuck ffmpeg render → killed after `video.render_timeout` seconds instead of burning the 30-minute job limit.
+- Channel hits YouTube's daily upload limit (common on unverified channels) → run fails with a message pointing to channel verification.
 - Claude unavailable or declines → quote bank, run continues.
 - Dropped connection during upload → the resumable upload retries the chunk up to 6 times.
 - ffmpeg missing → the run stops immediately with an install hint instead of failing mid-render.
@@ -153,7 +158,8 @@ assets/
 
 - **Music**: only use tracks you may publish on YouTube (YouTube Audio Library, Pixabay Music, a paid library). Content ID claims are automatic.
 - **Pexels**: free for commercial use, attribution not required; the pipeline still credits the videographer in each description.
-- **Quotes**: all authors died before 1930 or the line is a proverb, so the words are public domain. Attribution follows common usage; review `assets/quotes.json` and remove anything you are not comfortable with.
+- **Quotes**: all authors died before 1930 or the line is a proverb, so the words are public domain. Popular misattributions (such as the "Confucius" and "Edison" lines that circulate online) were removed, and each remaining quote carries the work it comes from. When you add quotes, check them on Quote Investigator or Wikiquote first; a fake quote in the comments costs more than a missing one.
+- **Text-to-speech dependency**: the free voice comes from the endpoint behind Microsoft Edge's read-aloud feature, used through the `edge-tts` library. It is unofficial: Microsoft has changed it before without notice, which broke old library versions until they were updated. If voiceovers start failing, upgrade `edge-tts` first. For a channel that earns money, Azure's official Speech service offers the same voices with a free monthly tier.
 - **AI voice**: a text-to-speech reading of a quote is not deceptive synthetic media, but the description discloses it anyway (`youtube.ai_disclosure`), and `youtube.synthetic_media_label` can set YouTube's official flag too.
 - **Token lifetime**: if the Google OAuth app stays in "Testing" status, uploads stop after 7 days with a clear error in the Actions log. Publishing the app fixes it permanently.
 - **Quota**: a run that hits the daily YouTube quota fails with an explicit message; the rendered video is still saved as a workflow artifact so nothing is lost.

@@ -39,8 +39,10 @@ class Background:
     id: str | None = None  # e.g. "pexels:12345", used to avoid repeats
 
 
-def pick_query(cfg: dict, rng: random.Random, theme: str | None) -> str:
-    """Prefer search terms mapped to the script's theme, else any configured query."""
+def pick_query(cfg: dict, rng: random.Random, theme: str | None, explicit: str | None = None) -> str:
+    """An explicit query (e.g. from Claude) wins, then terms mapped to the theme, then any configured query."""
+    if explicit:
+        return explicit
     by_tag = get(cfg, "background.tag_queries", {}) or {}
     if theme and by_tag.get(theme):
         return rng.choice(list(by_tag[theme]))
@@ -89,12 +91,13 @@ def from_pexels(
     min_duration: float,
     theme: str | None = None,
     avoid_ids: set[str] | None = None,
+    query: str | None = None,
 ) -> Background | None:
     key = os.environ.get("PEXELS_API_KEY")
     if not key:
         log.info("PEXELS_API_KEY not set; skipping stock footage")
         return None
-    query = pick_query(cfg, rng, theme)
+    query = pick_query(cfg, rng, theme, query)
     avoid = avoid_ids or set()
     try:
         page = rng.randint(1, int(get(cfg, "background.pexels_pages", 3)))
@@ -171,12 +174,13 @@ def choose(
     assets_dir: Path,
     theme: str | None = None,
     avoid_ids: set[str] | None = None,
+    query: str | None = None,
 ) -> Background:
     order = get(cfg, "background.sources", ["pexels", "local", "gradient"])
     for source in order:
         bg: Background | None = None
         if source == "pexels":
-            bg = from_pexels(cfg, rng, cache_dir, duration, theme, avoid_ids)
+            bg = from_pexels(cfg, rng, cache_dir, duration, theme, avoid_ids, query)
         elif source == "local":
             bg = from_local(cfg, rng, assets_dir)
         elif source == "gradient":

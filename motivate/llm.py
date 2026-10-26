@@ -25,7 +25,10 @@ Rules:
 - End on one concrete thing the viewer can do today.
 - The title is for YouTube: specific, under 80 characters, no clickbait, no ALL CAPS.
 - The description is 1-3 sentences, no hashtags (they are added later).
-- Tags are 4-8 lowercase phrases without the # sign."""
+- Tags are 4-8 lowercase phrases without the # sign.
+- Footage is a 2-4 word stock-video search phrase for a calm, cinematic vertical
+  background that fits the mood (for example "sunrise mountain ridge" or "rain on
+  city window"). No people's faces, no text, no brands."""
 
 SCHEMA = {
     "type": "object",
@@ -35,8 +38,9 @@ SCHEMA = {
         "title": {"type": "string"},
         "description": {"type": "string"},
         "tags": {"type": "array", "items": {"type": "string"}, "minItems": 4, "maxItems": 8},
+        "footage": {"type": "string", "description": "2-4 word stock video search phrase."},
     },
-    "required": ["hook", "body", "title", "description", "tags"],
+    "required": ["hook", "body", "title", "description", "tags", "footage"],
     "additionalProperties": False,
 }
 
@@ -90,6 +94,11 @@ def generate_script(cfg: dict, rng: random.Random, recent_titles: list[str]) -> 
     if not (30 <= body_words <= 95):
         log.warning("Claude body was %d words; using the quote bank", body_words)
         return None
-    script = from_llm(data, cfg, theme)
+    if not data.get("title", "").strip():
+        log.warning("Claude returned an empty title; using the quote bank")
+        return None
+    footage = " ".join(str(data.get("footage", "")).split()[:5])
+    data["footage"] = footage if 1 <= len(footage.split()) <= 5 else ""
+    script = from_llm(data, cfg, theme, rng)
     log.info("Claude wrote an original script on '%s' (%d words)", theme, body_words)
     return script

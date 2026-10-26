@@ -79,13 +79,26 @@ background:
     action: [highway night lights, city timelapse, sprint start]
     mindset: [calm lake reflection, clouds timelapse, sunrise meditation]
     fear: [fog forest path, dark ocean night, thunderstorm]
+    time: [clock tower timelapse, hourglass sand, sunset timelapse]
+    procrastination: [city sunrise timelapse, alarm clock morning, hourglass sand]
+    work: [workshop hands crafting, blacksmith forge, construction site sunrise]
+    wisdom: [ancient library, old stone temple, starry night sky]
+    growth: [plant growing timelapse, forest canopy aerial, seedling sunlight]
+    purpose: [lighthouse night, mountain summit sunrise, compass map]
+    preparation: [mountaineer gear, chess board, rowing team training]
+    gratitude: [golden hour field, sunlight through trees, calm sea sunset]
+    dreams: [milky way night sky, hot air balloons sunrise, northern lights]
+    perspective: [aerial city grid, earth from space, mountain valley clouds]
+    responsibility: [lighthouse storm, captain ship wheel, mountain guide rope]
+    passion: [fire embers slow motion, dancer silhouette, concert lights]
   pexels_pages: 3                       # random result page 1..N for more variety
   cache_keep: 24                        # downloaded clips kept in .cache (oldest pruned)
   # local_dir: assets/backgrounds       # folder scanned by the "local" source
 
 music:
-  enabled: true              # drop royalty-free tracks into assets/music (mp3/wav)
-  volume: 0.12
+  enabled: true              # drop royalty-free tracks into assets/music (mp3/wav) and commit them
+  volume: 0.18               # level between phrases
+  duck: true                 # dip the music about 8 dB while the voice speaks
   # dir: assets/music        # override the music folder
 
 video:
@@ -97,6 +110,7 @@ video:
   crf: 19
   preset: medium
   darken: 0.08
+  render_timeout: 900        # seconds before a stuck ffmpeg render is killed
 
 youtube:
   privacy: private           # private | unlisted | public. Start private, check a few uploads, then switch to public.

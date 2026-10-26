@@ -2,8 +2,9 @@ name: Publish motivational short
 
 on:
   schedule:
-    # Daily at 13:00 UTC (≈ 9am US-East / 2pm London). Add more lines for more posts per day.
-    - cron: "0 13 * * *"
+    # Daily at 13:17 UTC (≈ 9am US-East / 2pm London). Off the hour on purpose: GitHub
+    # delays or drops scheduled runs at :00 when its queue is busy. Add lines for more posts.
+    - cron: "17 13 * * *"
   workflow_dispatch:
     inputs:
       upload:
@@ -27,9 +28,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -65,7 +66,7 @@ jobs:
 
       - name: Keep the rendered video for 7 days
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: short-${{ github.run_number }}
           path: |

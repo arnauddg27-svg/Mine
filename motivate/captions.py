@@ -9,6 +9,14 @@ from .tts import VoiceTrack, Word
 
 SENTENCE_END = re.compile(r"[.!?;:]$")
 
+# Shorts player overlays (1080x1920 reference): the title/channel/sound block covers
+# roughly the bottom 480 px and the like/comment/share column the right ~150 px of
+# the lower half. Text margins below keep captions and the author line clear of both.
+SAFE_LEFT = 80
+SAFE_RIGHT = 170
+AUTHOR_FROM_BOTTOM = 560
+BRAND_FROM_TOP = 200
+
 
 def _ts(t: float) -> str:
     t = max(0.0, t)
@@ -67,7 +75,7 @@ def build_ass(track: VoiceTrack, script: Script, cfg: dict, total_duration: floa
     w = int(get(cfg, "video.width", 1080))
     h = int(get(cfg, "video.height", 1920))
     font = get(cfg, "captions.font", "Inter")
-    size = int(get(cfg, "captions.font_size", 92))
+    size = round(int(get(cfg, "captions.font_size", 92)) * w / 1080)  # font_size is for a 1080 px wide frame
     per_page = int(get(cfg, "captions.words_per_page", 3))
     upper = bool(get(cfg, "captions.uppercase", True))
     style = get(cfg, "captions.style", "karaoke")  # karaoke | block
@@ -82,6 +90,15 @@ def build_ass(track: VoiceTrack, script: Script, cfg: dict, total_duration: floa
     show_author = bool(get(cfg, "captions.show_author", True))
     show_brand = bool(get(cfg, "captions.show_brand", True))
 
+    def sx(px: int) -> int:  # scale reference margins to the configured frame size
+        return round(px * w / 1080)
+
+    def sy(px: int) -> int:
+        return round(px * h / 1920)
+
+    def px(v: float) -> float:  # outline / shadow thickness, scaled like the font
+        return round(v * w / 1080, 1)
+
     header = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: {w}
@@ -91,9 +108,9 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Word,{font},{size},{base},{base},{outline},{shadow},-1,0,0,0,100,100,1,0,1,7,3,5,70,70,0,1
-Style: Author,{font},{int(size * 0.5)},&H30FFFFFF,&H30FFFFFF,{outline},{shadow},0,-1,0,0,100,100,0,0,1,3,1,2,90,90,330,1
-Style: Brand,{font},{int(size * 0.42)},&H55FFFFFF,&H55FFFFFF,{outline},{shadow},-1,0,0,0,100,100,2,0,1,3,0,8,90,90,200,1
+Style: Word,{font},{size},{base},{base},{outline},{shadow},-1,0,0,0,100,100,1,0,1,{px(7)},{px(3)},5,{sx(SAFE_LEFT)},{sx(SAFE_RIGHT)},0,1
+Style: Author,{font},{int(size * 0.5)},&H30FFFFFF,&H30FFFFFF,{outline},{shadow},0,-1,0,0,100,100,0,0,1,{px(3)},{px(1)},2,{sx(SAFE_LEFT)},{sx(SAFE_RIGHT)},{sy(AUTHOR_FROM_BOTTOM)},1
+Style: Brand,{font},{int(size * 0.42)},&H55FFFFFF,&H55FFFFFF,{outline},{shadow},-1,0,0,0,100,100,2,0,1,{px(3)},0,8,{sx(SAFE_LEFT)},{sx(SAFE_RIGHT)},{sy(BRAND_FROM_TOP)},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

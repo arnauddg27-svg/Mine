@@ -146,7 +146,7 @@ def synth_segment(text: str, voice: str, rate: str, pitch: str, out_mp3: Path, p
 def ffprobe_duration(path: str | Path) -> float:
     out = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path)],
-        capture_output=True, text=True, check=True,
+        capture_output=True, text=True, check=True, timeout=60,
     ).stdout.strip()
     return float(out)
 
@@ -155,6 +155,7 @@ def _to_wav(src: Path, dst: Path) -> None:
     subprocess.run(
         ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(src), "-ar", "48000", "-ac", "1", "-c:a", "pcm_s16le", str(dst)],
         check=True,
+        timeout=120,
     )
 
 
@@ -204,7 +205,7 @@ def synthesize(segments: list[Segment], cfg: dict, workdir: Path, voice: str | N
     chain = "".join(f"[a{i}]" for i in range(len(spoken)))
     filt = ";".join(parts) + f";{chain}concat=n={len(spoken)}:v=0:a=1[out]"
     args += ["-filter_complex", filt, "-map", "[out]", "-ar", "48000", "-ac", "1", "-c:a", "pcm_s16le", str(out)]
-    subprocess.run(args, check=True)
+    subprocess.run(args, check=True, timeout=120)
     duration = ffprobe_duration(out)
     log.info("voiceover: %.1fs, %d words, voice=%s", duration, sum(len(s.words) for s in spoken), voice)
     return VoiceTrack(out, duration, spoken)

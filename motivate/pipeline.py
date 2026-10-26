@@ -82,7 +82,16 @@ def run_once(
     ass_path = workdir / "captions.ass"
     ass_path.write_text(ass_text, encoding="utf-8")
 
-    bg = bg_mod.choose(cfg, rng, total, cache_dir, assets_dir, theme=script.theme, avoid_ids=set(state.recent_values("background_id", 30)))
+    bg = bg_mod.choose(
+        cfg,
+        rng,
+        total,
+        cache_dir,
+        assets_dir,
+        theme=script.theme,
+        avoid_ids=set(state.recent_values("background_id", 30)),
+        query=script.footage_query,
+    )
     music = render.pick_music(cfg, rng, assets_dir)
     if music:
         log.info("music: %s", music.name)
