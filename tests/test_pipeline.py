@@ -97,6 +97,9 @@ def test_paginate_breaks_on_sentence_end():
     # a one-word sentence tail folds into the previous page
     words = [Word(t, i, i + 0.5) for i, t in enumerate("I have not failed. I've just found".split())]
     assert [[w.text for w in p] for p in captions.paginate(words, 3)] == [["I", "have", "not", "failed."], ["I've", "just", "found"]]
+    # ...but not when the merged line would be too long to fit on one line
+    words = [Word(t, i, i + 0.5) for i, t in enumerate("On your schedule today. Next".split())]
+    assert [len(p) for p in captions.paginate(words, 3)] == [3, 1, 1]
 
 
 def test_align_punctuation():

@@ -132,3 +132,54 @@ def thumbnail(video_path: Path, at: float, out_path: Path) -> Path:
         timeout=120,
     )
     return out_path
+
+
+def render_clip(
+    section: Path,
+    plan,
+    ass_path: Path,
+    cfg: dict,
+    out_path: Path,
+    fonts_dir: Path,
+    music_path: Path | None = None,
+) -> tuple[Path, float]:
+    """Reframe a source section to 9:16, burn captions, normalise its own audio."""
+    from .reframe import video_filter
+
+    w = int(get(cfg, "video.width", 1080))
+    h = int(get(cfg, "video.height", 1920))
+    fps = int(get(cfg, "video.fps", 30))
+    crf = int(get(cfg, "video.crf", 19))
+    preset = get(cfg, "video.preset", "medium")
+    loudness = float(get(cfg, "clips.loudness", -14))
+    duration = ffprobe_duration(section)
+
+    vf = video_filter(plan, w, h, fps) + f",subtitles=filename='{esc(ass_path)}':fontsdir='{esc(fonts_dir)}'[v]"
+    voice = f"[0:a]loudnorm=I={loudness:.1f}:TP=-1.5:LRA=11,aresample=48000,aformat=channel_layouts=stereo"
+    args = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(section)]
+    if music_path:
+        args += ["-stream_loop", "-1", "-i", str(music_path)]
+        vol = float(get(cfg, "clips.music_volume", 0.08))
+        af = (
+            f"{voice},asplit=2[voice][key];[1:a]aresample=48000,aformat=channel_layouts=stereo,volume={vol:.3f},"
+            f"afade=t=out:st={max(duration - 2, 0):.3f}:d=2[music];"
+            f"[music][key]sidechaincompress=threshold=0.03:ratio=6:attack=20:release=350[bed];"
+            f"[voice][bed]amix=inputs=2:duration=first:normalize=0[a]"
+        )
+    else:
+        af = f"{voice}[a]"
+    args += [
+        "-filter_complex", vf + ";" + af,
+        "-map", "[v]", "-map", "[a]",
+        "-t", f"{duration:.3f}",
+        "-c:v", "libx264", "-preset", preset, "-crf", str(crf), "-profile:v", "high", "-pix_fmt", "yuv420p",
+        "-r", str(fps),
+        "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
+        "-movflags", "+faststart",
+        str(out_path),
+    ]
+    log.info("rendering %s (%.1fs, %s layout)", out_path.name, duration, plan.mode)
+    proc = subprocess.run(args, capture_output=True, text=True, timeout=int(get(cfg, "video.render_timeout", 900)))
+    if proc.returncode != 0:
+        raise RuntimeError(f"ffmpeg failed:\n{proc.stderr[-4000:]}")
+    return out_path, ffprobe_duration(out_path)

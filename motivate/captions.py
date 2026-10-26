@@ -51,7 +51,7 @@ def _display(text: str) -> str:
     return text.rstrip(".,;:")
 
 
-def paginate(words: list[Word], per_page: int) -> list[list[Word]]:
+def paginate(words: list[Word], per_page: int, max_chars: int = 18) -> list[list[Word]]:
     pages: list[list[Word]] = []
     page: list[Word] = []
     for w in words:
@@ -61,17 +61,33 @@ def paginate(words: list[Word], per_page: int) -> list[list[Word]]:
             page = []
     if page:
         pages.append(page)
-    # Avoid lonely one-word pages: fold them into the previous page when it has room.
+    # Avoid lonely one-word pages: fold them into the previous page when the result stays short
+    # enough for one caption line.
     merged: list[list[Word]] = []
     for pg in pages:
-        if merged and len(pg) == 1 and len(merged[-1]) <= per_page:
+        joined = " ".join(w.text for w in (merged[-1] + pg)) if merged else ""
+        ends_sentence = bool(merged) and bool(SENTENCE_END.search(merged[-1][-1].text))
+        if merged and len(pg) == 1 and not ends_sentence and len(merged[-1]) <= per_page and len(joined) <= max_chars:
             merged[-1].extend(pg)
         else:
             merged.append(pg)
     return merged
 
 
-def build_ass(track: VoiceTrack, script: Script, cfg: dict, total_duration: float | None = None) -> str:
+def build_ass(
+    track: VoiceTrack,
+    script: Script,
+    cfg: dict,
+    total_duration: float | None = None,
+    layout: dict | None = None,
+) -> str:
+    """Build the subtitle file.
+
+    ``layout`` (optional, used by clip mode) positions elements as fractions of frame height:
+    ``caption_y`` for the word captions (default: centre), ``speaker_y`` for the name line,
+    and ``hook`` / ``hook_y`` for a boxed headline shown for the whole video.
+    """
+    layout = layout or {}
     w = int(get(cfg, "video.width", 1080))
     h = int(get(cfg, "video.height", 1920))
     font = get(cfg, "captions.font", "Inter")
@@ -99,6 +115,16 @@ def build_ass(track: VoiceTrack, script: Script, cfg: dict, total_duration: floa
     def px(v: float) -> float:  # outline / shadow thickness, scaled like the font
         return round(v * w / 1080, 1)
 
+    cx = round((sx(SAFE_LEFT) + w - sx(SAFE_RIGHT)) / 2)
+
+    def at(frac: float | None) -> str:  # \an5\pos override that centres a line at a height
+        return "" if frac is None else f"{{\\an5\\pos({cx},{round(frac * h)})}}"
+
+    word_pos = at(layout.get("caption_y"))
+    speaker_pos = at(layout.get("speaker_y"))
+    hook_text = _clean(str(layout.get("hook") or ""))
+    hook_box = ass_color("000000", alpha=0x50)
+
     header = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: {w}
@@ -111,6 +137,7 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 Style: Word,{font},{size},{base},{base},{outline},{shadow},-1,0,0,0,100,100,1,0,1,{px(7)},{px(3)},5,{sx(SAFE_LEFT)},{sx(SAFE_RIGHT)},0,1
 Style: Author,{font},{int(size * 0.5)},&H30FFFFFF,&H30FFFFFF,{outline},{shadow},0,-1,0,0,100,100,0,0,1,{px(3)},{px(1)},2,{sx(SAFE_LEFT)},{sx(SAFE_RIGHT)},{sy(AUTHOR_FROM_BOTTOM)},1
 Style: Brand,{font},{int(size * 0.42)},&H55FFFFFF,&H55FFFFFF,{outline},{shadow},-1,0,0,0,100,100,2,0,1,{px(3)},0,8,{sx(SAFE_LEFT)},{sx(SAFE_RIGHT)},{sy(BRAND_FROM_TOP)},1
+Style: Hook,{font},{int(size * 0.75)},&H00FFFFFF,&H00FFFFFF,{hook_box},{hook_box},-1,0,0,0,100,100,0,0,3,{px(16)},0,5,{sx(SAFE_LEFT)},{sx(SAFE_RIGHT)},0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -133,7 +160,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             page_end = min(page[-1].end + 0.35, page_end_limit) if page_end_limit - page[-1].end > 0.6 else page_end_limit
             texts = [_display(x.text.upper() if upper else x.text) for x in page]
             if style == "block":
-                add(page[0].start, page_end, "Word", " ".join(texts))
+                add(page[0].start, page_end, "Word", word_pos + " ".join(texts))
                 continue
             for wi, word in enumerate(page):
                 start = word.start
@@ -144,12 +171,15 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         rendered.append(f"{{\\1c{highlight}\\fscx{pop}\\fscy{pop}}}{t}{{\\r}}")
                     else:
                         rendered.append(t)
-                add(start, end, "Word", " ".join(rendered))
+                add(start, end, "Word", word_pos + " ".join(rendered))
 
-        if show_author and script.author and seg.role == "quote":
-            add(seg.words[0].start if seg.words else seg.start, next_start, "Author", f"— {_clean(script.author)}")
+        if show_author and script.author and seg.role in ("quote", "clip"):
+            add(seg.words[0].start if seg.words else seg.start, next_start, "Author", speaker_pos + f"— {_clean(script.author)}")
 
     if show_brand and handle:
         add(0.0, total, "Brand", _clean(handle), layer=1)
+    if hook_text:
+        hook = hook_text.upper() if upper else hook_text
+        add(0.0, total, "Hook", at(layout.get("hook_y", 0.17)) + hook, layer=2)
 
     return header + "\n".join(events) + "\n"

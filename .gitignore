@@ -12,3 +12,6 @@ __pycache__/
 
 # user-supplied media in assets/music and assets/backgrounds is NOT ignored on purpose:
 # scheduled GitHub runs only see what is committed.
+
+# local run logs
+logs/

@@ -1,166 +1,174 @@
-# Daily Drive — automated motivational Shorts channel
+# Daily Drive — automated motivational clip channel
 
-A hands-off pipeline that produces and publishes one vertical motivational short per run:
+Turns long talks, lectures and podcasts into captioned vertical Shorts and posts them to YouTube:
 
 ```
-quote / AI script  →  neural voiceover  →  word-by-word captions  →  stock footage + music  →  1080×1920 MP4  →  YouTube
+speaker's long videos → transcript with word timings → Claude picks the best 20–58 s moments
+  → cut → reframe to 9:16 (follows the face) → word-by-word captions + headline → YouTube
 ```
 
-Everything is original or licensed: public-domain quotes (or scripts Claude writes), a free Microsoft neural voice, Pexels stock video (free for commercial use), your own royalty-free music, and the open-licensed Inter font. Nothing is clipped from other creators, which keeps the channel clear of copyright strikes and YouTube's reused-content rule.
+Each run posts one clip. Every source video yields up to five clips, so a channel with ten long uploads keeps you posting for weeks.
 
-## What a video looks like
+## Read this first: permission
 
-- 15–30 s, 9:16, 30 fps, H.264 + AAC, ready for Shorts.
-- Spoken: a short hook ("Read this before you give up.") → the quote → a call to action.
-- Captions: three words per page, the spoken word highlighted in yellow, author shown under the quote, channel handle as a small watermark. All text stays inside the Shorts safe area, clear of the title block at the bottom and the like/comment buttons on the right.
-- Background: a portrait stock clip matched to the quote's theme (storm clouds for resilience, a runner at dawn for persistence…), darkened and vignetted for legibility. Offline fallback is a slowly moving dark gradient, so the pipeline never fails for lack of footage.
-- Audio: voice normalized to -16 LUFS; music, if you add any, dips under the voice and comes back up in the pauses.
-- Description: the quote with its author and source work ("— Seneca, Letters to Lucilius 104"), so viewers can check it.
+Reposting someone else's footage without permission is copyright infringement. YouTube handles it with automatic Content ID claims and copyright strikes, and three strikes delete the channel. Fully automated reposts with no added commentary also get demonetized under YouTube's "reused content" rule.
 
-## Quick start (local)
+The safe sources are:
+- speakers and podcasts that run clipping programs or say in their channel description that clips are allowed;
+- creators who gave you permission (keep the email);
+- public-domain footage, such as NASA and other US government video.
 
-```bash
-# 1. system + python deps (ffmpeg must be on PATH)
-sudo apt-get install ffmpeg          # or: brew install ffmpeg
-pip install -r requirements.txt
+Every upload credits the speaker and links the full video, but credit is not permission. You choose what goes in `sources.yaml`.
 
-# 2. render a test video without touching YouTube
-python -m motivate run --no-upload
-# -> out/<timestamp>-<slug>/short.mp4, thumb.jpg, metadata.json, captions.ass
-```
+## What a clip looks like
 
-Add a Pexels key for real footage (free at https://www.pexels.com/api/):
+- 20–58 s, 1080×1920, 30 fps, audio normalized to YouTube's playback level (-14 LUFS).
+- **One speaker on screen**: the frame follows their face, re-centering only at camera cuts, like a human editor would.
+- **Two people, slides, or wide shots**: the full frame sits in the middle over a blurred copy of itself.
+- Captions three words at a time with the spoken word highlighted, placed under the face and clear of the Shorts title and buttons.
+- A boxed headline at the top ("Why discipline beats motivation") and the speaker's name under the captions.
+- Description: what the clip is about, the speaker, a link to the full video, and the credit line.
 
-```bash
-export PEXELS_API_KEY=...
-python -m motivate run --no-upload
-```
+## Where it runs: your own computer
 
-Drop any royalty-free `.mp3` files into `assets/music/` and they are mixed under the voice automatically. Commit them: the scheduled GitHub run only sees files that are in the repository (GitHub rejects single files over 100 MB, which music never comes near).
+YouTube blocks video downloads from cloud servers, including GitHub Actions ("Sign in to confirm you're not a bot"). Clip mode therefore runs on a computer with a normal home connection: a laptop, desktop or a small always-on box such as a Raspberry Pi 5 or an old PC.
 
-## Connect YouTube (one-time, ~10 minutes)
+## Setup (about 20 minutes)
 
-1. In [Google Cloud Console](https://console.cloud.google.com/) create a project and **enable "YouTube Data API v3"**.
-2. *APIs & Services → OAuth consent screen*: External, fill in the app name and your email, add the scope `.../auth/youtube.upload`, add your Google account as a test user.
-3. **Publish the app** (Publishing status → "In production"). While an app is in "Testing", refresh tokens expire after 7 days and the scheduler would die within a week. Google shows an "unverified app" screen when you authorize; that is fine for your own channel.
-4. *Credentials → Create credentials → OAuth client ID → Desktop app*. Download the JSON and save it as `client_secret.json` in this folder.
-5. Authorize once on a machine with a browser, signed in to the Google account that owns the channel:
+1. **Install ffmpeg and Python 3.10+**
    ```bash
-   python -m motivate authorize
+   sudo apt install ffmpeg python3-venv      # macOS: brew install ffmpeg python
+   python3 -m venv .venv && source .venv/bin/activate
+   pip install -r requirements.txt
    ```
-   This writes `token.json` (git-ignored).
-6. Test an upload (the default privacy is `private`):
+   On Windows, install Python from python.org and ffmpeg with `winget install ffmpeg`, then run the same `pip install`.
+
+2. **Choose your speakers** in `sources.yaml`:
+   ```yaml
+   - channel: https://www.youtube.com/@CHANNEL_HANDLE/videos
+     speaker: Speaker Name
+     credit: Speaker Name (youtube.com/@CHANNEL_HANDLE)
+     max_videos: 10
+   - url: https://www.youtube.com/watch?v=VIDEO_ID       # or a single video
+     speaker: Speaker Name
+   - file: assets/sources/interview.mp4                   # or a file you were given
+     speaker: Speaker Name
+     source_url: https://where-the-full-video-is
+   ```
+   Runs rotate between entries so speakers alternate. `python -m motivate sources` shows what was found and how many clips are left.
+
+3. **Add a Claude API key** (recommended). Claude reads each transcript and picks moments that make sense on their own, then writes the title, headline and description. It costs a few cents for a short talk and up to about 35 cents for a 3-hour podcast, which covers that video's five clips. Without a key, a free keyword-based picker is used; it cuts on sentence boundaries but its picks and titles are noticeably weaker.
+   ```bash
+   cp .env.example .env     # then put your key in ANTHROPIC_API_KEY=
+   set -a; source .env; set +a   # load it into this terminal (run_daily.sh does this itself)
+   ```
+
+4. **Connect YouTube** (one time): follow [Connect YouTube](#connect-youtube) below, then run `python -m motivate authorize`.
+
+5. **Make a test clip without uploading**:
+   ```bash
+   python -m motivate run --no-upload
+   # -> out/<timestamp>-<title>/short.mp4, thumb.jpg, metadata.json
+   ```
+   The first run per source video downloads its audio and transcribes it: about 8 minutes for a 3-hour podcast on a 4-core laptop (a 44-minute interview took just over 2). Later clips from the same video take about a minute.
+
+6. **Upload a private test**, check it on YouTube, then set `youtube.privacy: public` in `config.yaml`:
    ```bash
    python -m motivate run
    ```
-7. When you are happy with a few test uploads, set `youtube.privacy: public` in `config.yaml` and set `channel.handle` to your real handle. Until then the scheduler keeps uploading private videos.
 
-Quota: uploading costs 1,600 of the default 10,000 daily units, so up to 6 uploads per day fit without a quota increase.
+7. **Schedule it.** macOS / Linux, daily at 9:17:
+   ```bash
+   crontab -e
+   17 9 * * *  /path/to/repo/scripts/run_daily.sh
+   ```
+   Windows (PowerShell, once):
+   ```powershell
+   schtasks /Create /TN "Daily Drive" /SC DAILY /ST 09:17 /TR "C:\path\to\repo\scripts\run_daily.bat"
+   ```
+   The script updates yt-dlp before each run, because YouTube changes break old versions, and appends output to `logs/run.log`. The computer must be awake at that time.
 
-## Run it on a schedule (GitHub Actions)
+## Making one clip by hand
 
-The included workflow `.github/workflows/publish.yml` renders and uploads daily at 13:00 UTC and commits `state/history.json` back so quotes are never repeated.
+```bash
+# exact moment
+python -m motivate clip "https://www.youtube.com/watch?v=VIDEO_ID" --speaker "Speaker Name" \
+    --start 12:30 --end 13:15 --title "Speaker Name on starting before you are ready" --hook "Stop waiting to feel ready"
 
-Add these repository secrets (*Settings → Secrets and variables → Actions*):
-
-| Secret | Required | Value |
-|---|---|---|
-| `YOUTUBE_TOKEN_JSON` | yes | full contents of your local `token.json` |
-| `PEXELS_API_KEY` | recommended | Pexels API key (gradient fallback without it) |
-| `ANTHROPIC_API_KEY` | optional | enables `script.source: claude` or `mixed` |
-
-Then push, and use *Actions → Publish motivational short → Run workflow* for a manual test (untick **upload** to only render; the MP4 appears under the run's artifacts). Change the `cron` lines to post more often; two to three Shorts a day is a common cadence.
-
-Any machine with cron works too:
-
+# let it find the best moment in that video
+python -m motivate clip "https://www.youtube.com/watch?v=VIDEO_ID" --speaker "Speaker Name" --no-upload
 ```
-0 13 * * *  cd /path/to/repo && /usr/bin/python3 -m motivate run >> publish.log 2>&1
-```
 
-## Configuration (`config.yaml`)
+## Connect YouTube
+
+1. In [Google Cloud Console](https://console.cloud.google.com/) create a project and **enable "YouTube Data API v3"**.
+2. *APIs & Services → OAuth consent screen*: External, add your email and the scope `.../auth/youtube.upload`, and add your Google account as a test user.
+3. **Publish the app** (Publishing status → "In production"). In "Testing" status, tokens expire after 7 days. Google shows an "unverified app" screen when you authorize, which is fine for your own channel.
+4. *Credentials → Create credentials → OAuth client ID → Desktop app*. Download the JSON as `client_secret.json` in this folder.
+5. Run `python -m motivate authorize` and sign in with the account that owns the channel. This writes `token.json`, which is git-ignored.
+
+The default API quota allows about six uploads a day.
+
+## Clip settings (`config.yaml`)
 
 | Key | What it does |
 |---|---|
-| `channel.handle` | watermark text and "Follow @handle" line in descriptions (`""` to hide) |
-| `script.source` | `bank` (public-domain quotes), `claude` (original AI-written scripts), `mixed` |
-| `script.hook` / `script.cta` | spoken opener (rotates through 16 lines, never the same as the last 3 videos) / closer (string or list, one picked per video) |
-| `voice.name`, `rate`, `pitch` | any edge-tts voice; list with `python -m motivate voices` |
-| `voice.names` | optional list; a different voice is picked for each video |
-| `voice.pause_after` | silence after each segment, in seconds |
-| `captions.*` | font, size, words per page, colours, `karaoke` or `block` style |
-| `captions.time_offset` | shift captions in seconds (TTS timestamps run about 0.1 s ahead of the audio; `0.1` delays them to match exactly) |
-| `background.sources` | order to try: `pexels`, `local` (`assets/backgrounds`), `gradient` |
-| `background.queries` | Pexels search terms; one is picked per video |
-| `background.tag_queries` | search terms per quote theme (resilience, courage, …) so footage matches the message; clips used in the last 30 videos are avoided |
-| `background.pexels_pages` | pick a random Pexels result page from 1..N (more variety per search term) |
-| `background.local_dir`, `music.dir` | override the folders scanned for your own clips and music |
-| `music.enabled`, `music.volume` | background music on/off and its level between phrases |
-| `music.duck` | dip the music about 8 dB while the voice speaks (default on) |
-| `video.max_seconds` | hard cap (default 59 s, raise up to 180 for longer Shorts) |
-| `youtube.privacy` | `private` while testing, then `public` |
-| `youtube.tags`, `hashtags`, `category_id` | upload metadata |
-| `youtube.ai_disclosure` | appends a one-line AI-voiceover note to every description |
-| `youtube.synthetic_media_label` | also sets YouTube's "altered or synthetic content" flag on the upload (off by default: a TTS voice reading a quote is not the realistic-deception case the label is for; turn it on if you prefer to over-disclose) |
+| `mode` | `clips` (this README) or `quotes` (see the end) |
+| `clips.min_seconds`, `max_seconds` | clip length bounds |
+| `clips.candidates_per_video` | moments picked per source video; each run posts the next unused one |
+| `clips.picker` | `claude` or `heuristic` |
+| `clips.whisper_model` | speech-to-text model: `tiny.en` fast, `base.en` default, `small.en` more accurate and about 3× slower; use `base`/`small` without `.en` for non-English speakers |
+| `clips.layout` | `auto`, `crop` (always follow the face) or `fit` (always full frame over blur) |
+| `clips.hook_overlay`, `show_speaker` | headline at the top, speaker name under the captions |
+| `clips.caption_y`, `font_size` | caption height on screen and size |
+| `clips.max_videos_per_channel` | newest uploads considered per channel |
+| `clips.music` | quiet music bed from `assets/music`, ducked under the voice (off by default) |
+| `clips.cookies_file` | browser cookies for yt-dlp; see Troubleshooting |
+| `youtube.privacy`, `tags`, `hashtags` | upload settings (the speaker's name is added as a tag and hashtag) |
 
-Environment overrides: `MOTIVATE_PRIVACY`, `MOTIVATE_VOICE`, `MOTIVATE_SCRIPT_SOURCE`, `YOUTUBE_TOKEN_FILE`, `YOUTUBE_CLIENT_SECRET_FILE`, `EDGE_TTS_PROXY`.
+## Troubleshooting
 
-## Original scripts with Claude (optional)
-
-Set `script.source: claude` (or `mixed`) and `ANTHROPIC_API_KEY`. Each run asks Claude Opus 5.5 for a 45–75 word original monologue on a rotating theme (discipline, starting before you feel ready, comparison, …), plus a title, description, tags and a stock-footage search phrase that fits the mood, returned as validated JSON. Recent titles are passed in so topics do not repeat. Server-side refusal fallback is enabled by default; if the request is declined or the API is unreachable the run silently uses the quote bank instead, so the schedule never breaks. Expect roughly one to three cents per video (thinking tokens are billed as output).
+- **"Sign in to confirm you're not a bot"**: you are on a server or VPN. Run from a home connection. As a last resort, export cookies from a browser signed in to a throwaway Google account with a "cookies.txt" extension and set `clips.cookies_file`. Google can flag accounts used this way, so never use your channel's account.
+- **Download errors after weeks of working**: update yt-dlp with `pip install -U yt-dlp`. The daily script does this automatically.
+- **"No unused clips left"**: every picked moment has been posted. Add videos or channels to `sources.yaml`, or raise `max_videos`.
+- **The wrong person is framed**: set `clips.layout: fit` for that kind of footage.
+- **Picks start mid-thought**: use the Claude picker. The free picker cannot tell an interviewer from the speaker.
 
 ## Commands
 
 ```
-python -m motivate run [--no-upload] [--record] [--privacy private|unlisted|public] [--count N] [--seed N] [--out DIR]
-python -m motivate authorize [--client-secret PATH] [--token PATH] [--no-browser]
-python -m motivate voices [--locale en-GB]
+python -m motivate run [--no-upload] [--record] [--privacy private|unlisted|public] [--count N] [--mode clips|quotes]
+python -m motivate clip URL_OR_FILE --speaker NAME [--start T --end T] [--title ..] [--hook ..] [--no-upload]
+python -m motivate sources
+python -m motivate authorize
 python -m motivate stats
-python -m pytest            # 30 tests, no network needed (includes a full offline render)
+python -m pytest            # 42 tests, no network needed (includes full offline clip and quote renders)
 ```
 
-`--no-upload` renders without touching `state/history.json`, so previews never use up quotes. Add `--record` when you render for manual upload and want the quote counted.
+`--no-upload` leaves `state/history.json` untouched, so test renders never use up clips. Add `--record` to count it anyway.
 
 ## Project layout
 
 ```
 motivate/
-  cli.py          command line
-  pipeline.py     orchestrates one run
-  quotes.py       quote bank + no-repeat picker
-  script.py       hook/quote/CTA segments, title, description, tags
-  llm.py          optional Claude script writer
-  tts.py          edge-tts voiceover with word timestamps
-  captions.py     ASS subtitle generator (highlighted words, author, watermark)
-  background.py   Pexels / local / gradient backgrounds
-  render.py       ffmpeg composition
+  clips.py        clip mode: pick next moment, cut, reframe, caption, upload
+  sources.py      sources.yaml, yt-dlp listing/downloads, local files
+  transcript.py   faster-whisper transcription with word timings (cached)
+  highlights.py   Claude moment picker + keyword fallback
+  reframe.py      face tracking (OpenCV YuNet) and 9:16 layouts
+  captions.py     ASS captions: highlighted words, headline, speaker, watermark
+  render.py       ffmpeg composition for clips and quote videos
   youtube.py      OAuth + resumable upload
-  state.py        state/history.json
-assets/
-  quotes.json     public-domain quotes, each with author and source (edit freely)
-  fonts/          Inter (OFL)
-  music/          your royalty-free tracks
-  backgrounds/    your own vertical clips (optional)
-.github/workflows/publish.yml   daily scheduler
+  pipeline.py, script.py, quotes.py, tts.py, background.py, llm.py   quote mode
+sources.yaml      what to clip
+scripts/          run_daily.sh / run_daily.bat for scheduling
+assets/models/    YuNet face detector (MIT licence)
 ```
 
-## What happens when something breaks
+## Quote mode (optional)
 
-- No Pexels key or Pexels down → gradient background, run continues.
-- Microsoft's TTS endpoint refuses the runner (happens occasionally for datacenter IPs) → four attempts with growing backoff, then the run fails; the next scheduled run retries.
-- A stuck ffmpeg render → killed after `video.render_timeout` seconds instead of burning the 30-minute job limit.
-- Channel hits YouTube's daily upload limit (common on unverified channels) → run fails with a message pointing to channel verification.
-- Claude unavailable or declines → quote bank, run continues.
-- Dropped connection during upload → the resumable upload retries the chunk up to 6 times.
-- ffmpeg missing → the run stops immediately with an install hint instead of failing mid-render.
-- YouTube token expired or quota exhausted → run fails with a message saying exactly what to do; the video stays in the workflow artifacts.
+`mode: quotes` (or `--mode quotes`) makes narrated quote videos instead: a verified public-domain quote, a free neural voice, Pexels stock footage (needs `PEXELS_API_KEY`) or an animated gradient, word-by-word captions and optional ducked music from `assets/music`. It needs no downloads from YouTube, so it can also run on GitHub Actions: add `YOUTUBE_TOKEN_JSON` (contents of `token.json`), `PEXELS_API_KEY` and optionally `ANTHROPIC_API_KEY` as repository secrets, and uncomment the schedule in `.github/workflows/publish.yml`. The quote bank in `assets/quotes.json` was fact-checked against Wikiquote and Quote Investigator, and every description cites the source work.
 
-## Things to know before going public
+## Licences
 
-- **Music**: only use tracks you may publish on YouTube (YouTube Audio Library, Pixabay Music, a paid library). Content ID claims are automatic.
-- **Pexels**: free for commercial use, attribution not required; the pipeline still credits the videographer in each description.
-- **Quotes**: all authors died before 1930 or the line is a proverb, so the words are public domain. Popular misattributions (such as the "Confucius" and "Edison" lines that circulate online) were removed, and each remaining quote carries the work it comes from. When you add quotes, check them on Quote Investigator or Wikiquote first; a fake quote in the comments costs more than a missing one.
-- **Text-to-speech dependency**: the free voice comes from the endpoint behind Microsoft Edge's read-aloud feature, used through the `edge-tts` library. It is unofficial: Microsoft has changed it before without notice, which broke old library versions until they were updated. If voiceovers start failing, upgrade `edge-tts` first. For a channel that earns money, Azure's official Speech service offers the same voices with a free monthly tier.
-- **AI voice**: a text-to-speech reading of a quote is not deceptive synthetic media, but the description discloses it anyway (`youtube.ai_disclosure`), and `youtube.synthetic_media_label` can set YouTube's official flag too.
-- **Token lifetime**: if the Google OAuth app stays in "Testing" status, uploads stop after 7 days with a clear error in the Actions log. Publishing the app fixes it permanently.
-- **Quota**: a run that hits the daily YouTube quota fails with an explicit message; the rendered video is still saved as a workflow artifact so nothing is lost.
-- **Monetization**: YouTube's "repetitious content" rule targets channels that are mass-produced with little variation. Original Claude scripts, varied footage and voices, and your own hooks are the levers to stay on the right side of it.
+Inter font: SIL OFL 1.1. YuNet face model: MIT. Code dependencies keep their own licences.

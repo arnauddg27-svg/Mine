@@ -4,4 +4,9 @@ google-auth-oauthlib>=1.2
 google-auth-httplib2>=0.2
 pyyaml>=6.0
 requests>=2.31
-anthropic>=2.0         # fallbacks / output_config used in llm.py
+anthropic>=2.0         # fallbacks / output_config used in llm.py and highlights.py
+# clip mode
+yt-dlp>=2026.1.1       # update often: YouTube changes break old versions (run_daily.sh upgrades it)
+faster-whisper>=1.1
+opencv-python-headless>=4.10   # YuNet face detector (cv2.FaceDetectorYN)
+numpy>=1.26

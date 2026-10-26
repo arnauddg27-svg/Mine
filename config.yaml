@@ -3,7 +3,32 @@ channel:
   handle: "@dailydrive"      # set to "" to hide the watermark
   language: en
 
-# Where the words come from.
+# clips  = cut moments from long talks/podcasts by the speakers in sources.yaml (needs a home connection: see README)
+# quotes = narrated public-domain quotes over stock footage (runs anywhere, including GitHub Actions)
+mode: clips
+
+clips:
+  sources_file: sources.yaml
+  min_seconds: 20              # clip length bounds
+  max_seconds: 58
+  candidates_per_video: 5      # moments picked per source video (each run posts the next unused one)
+  picker: claude               # claude (needs ANTHROPIC_API_KEY, ~10-30 cents per source video) | heuristic (free, weaker)
+  picker_effort: high
+  whisper_model: base.en       # speech-to-text: tiny.en (fast) | base.en | small.en (more accurate, ~3x slower)
+  layout: auto                 # auto = follow the face when one speaker fills the frame, else fit with blurred bars | crop | fit
+  hook_overlay: true           # boxed headline at the top for the whole clip
+  show_speaker: true           # "— Speaker Name" under the captions
+  caption_y: 0.66              # caption height as a fraction of the frame (below the face, above the Shorts title)
+  font_size: 76                # caption size for clips (quote videos use captions.font_size)
+  heuristic_hooks: false       # with picker: heuristic, show the detected topic as the headline
+  loudness: -14                # LUFS target for the clip audio (YouTube's playback level)
+  max_height: 1080             # source download resolution cap
+  max_videos_per_channel: 15   # newest uploads considered per channel entry
+  min_source_seconds: 180      # ignore a channel's own Shorts and trailers
+  music: false                 # add a quiet ducked bed from assets/music
+  cookies_file: ""             # optional browser cookies.txt for yt-dlp (see README before using)
+
+# Quote mode only: where the words come from.
 script:
   source: bank               # bank = public-domain quotes | claude = original AI scripts | mixed = both
   hook: true                 # speak a short attention line before the quote

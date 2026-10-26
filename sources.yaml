@@ -1,0 +1,26 @@
+# What the clip channel cuts from. Each entry needs a speaker name plus one of:
+#   channel: newest long-form uploads of a YouTube channel or playlist
+#   url:     one specific video
+#   file:    a local video file (for footage you were sent or licensed)
+# Optional: credit (shown in the description), max_videos (channels), title / source_url (files).
+#
+# Only add speakers whose content you have permission to clip. Many podcasters and
+# speakers run clipping programs or say in their channel description that clips are
+# allowed; reuploading without permission leads to copyright strikes (three strikes
+# deletes the channel).
+#
+# Examples (remove the leading "# " to enable):
+#
+# - channel: https://www.youtube.com/@CHANNEL_HANDLE/videos
+#   speaker: Speaker Name
+#   credit: Speaker Name (youtube.com/@CHANNEL_HANDLE)
+#   max_videos: 10
+#
+# - url: https://www.youtube.com/watch?v=VIDEO_ID
+#   speaker: Speaker Name
+#
+# - file: assets/sources/interview.mp4
+#   speaker: Speaker Name
+#   title: Interview title
+#   source_url: https://example.com/where-the-full-video-lives
+[]

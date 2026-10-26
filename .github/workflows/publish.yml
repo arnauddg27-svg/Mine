@@ -1,10 +1,11 @@
-name: Publish motivational short
+name: Publish quote short
 
+# Quote mode only. Clip mode cannot run here: YouTube blocks video downloads from
+# GitHub's servers ("confirm you're not a bot"), so clips run on your own computer
+# with scripts/run_daily.sh. To post quote videos on a schedule, uncomment below.
 on:
-  schedule:
-    # Daily at 13:17 UTC (≈ 9am US-East / 2pm London). Off the hour on purpose: GitHub
-    # delays or drops scheduled runs at :00 when its queue is busy. Add lines for more posts.
-    - cron: "17 13 * * *"
+  # schedule:
+  #   - cron: "17 13 * * *"   # daily 13:17 UTC; off the hour because GitHub delays :00 runs
   workflow_dispatch:
     inputs:
       upload:
@@ -62,7 +63,7 @@ jobs:
           FLAGS=""
           [ "$UPLOAD" = "true" ] || FLAGS="$FLAGS --no-upload"
           [ -z "$PRIVACY" ] || FLAGS="$FLAGS --privacy $PRIVACY"
-          python -m motivate run $FLAGS
+          python -m motivate run --mode quotes $FLAGS
 
       - name: Keep the rendered video for 7 days
         if: always()
