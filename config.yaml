@@ -116,7 +116,7 @@ youtube:
   privacy: private           # private | unlisted | public. Start private, check a few uploads, then switch to public.
   category_id: "22"          # 22 = People & Blogs, 27 = Education, 24 = Entertainment
   title_suffix: " #shorts"
-  tags: [motivation, motivational video, mindset, discipline, self improvement, stoicism, daily motivation, shorts]
+  tags: [motivation, motivational video, mindset, discipline, self improvement, daily motivation, shorts]   # per-quote tags are added automatically
   hashtags: [motivation, mindset, discipline, shorts]
   made_for_kids: false
   notify_subscribers: true
