@@ -18,7 +18,14 @@ def cmd_run(args: argparse.Namespace) -> int:
     results = []
     for i in range(args.count):
         seed = None if args.seed is None else args.seed + i
-        meta = run_once(cfg, upload=not args.no_upload, privacy=args.privacy, seed=seed, out_dir=Path(args.out) if args.out else None)
+        meta = run_once(
+            cfg,
+            upload=not args.no_upload,
+            privacy=args.privacy,
+            seed=seed,
+            out_dir=Path(args.out) if args.out else None,
+            record=True if args.record else None,
+        )
         results.append(meta)
         print(json.dumps({k: meta.get(k) for k in ("title", "duration", "video", "url", "source")}, ensure_ascii=False))
     return 0
@@ -71,7 +78,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="command", required=True)
 
     r = sub.add_parser("run", help="generate one (or more) shorts and upload them")
-    r.add_argument("--no-upload", action="store_true", help="render only; skip YouTube")
+    r.add_argument("--no-upload", action="store_true", help="render only; skip YouTube (does not consume the quote)")
+    r.add_argument("--record", action="store_true", help="with --no-upload: still mark the quote used and log the run")
     r.add_argument("--privacy", choices=["private", "unlisted", "public"], default=None)
     r.add_argument("--count", type=int, default=1)
     r.add_argument("--seed", type=int, default=None, help="deterministic choices (useful for tests)")

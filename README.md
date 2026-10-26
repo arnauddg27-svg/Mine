@@ -90,6 +90,8 @@ Any machine with cron works too:
 | `background.sources` | order to try: `pexels`, `local` (`assets/backgrounds`), `gradient` |
 | `background.queries` | Pexels search terms; one is picked per video |
 | `background.tag_queries` | search terms per quote theme (resilience, courage, …) so footage matches the message; clips used in the last 30 videos are avoided |
+| `background.pexels_pages` | pick a random Pexels result page from 1..N (more variety per search term) |
+| `background.local_dir`, `music.dir` | override the folders scanned for your own clips and music |
 | `music.enabled`, `music.volume` | background music mix |
 | `video.max_seconds` | hard cap (default 59 s, raise up to 180 for longer Shorts) |
 | `youtube.privacy` | `private` while testing, then `public` |
@@ -101,17 +103,19 @@ Environment overrides: `MOTIVATE_PRIVACY`, `MOTIVATE_VOICE`, `MOTIVATE_SCRIPT_SO
 
 ## Original scripts with Claude (optional)
 
-Set `script.source: claude` (or `mixed`) and `ANTHROPIC_API_KEY`. Each run asks Claude Opus 5.5 for a 45–75 word original monologue on a rotating theme (discipline, starting before you feel ready, comparison, …), plus a title, description and tags, returned as validated JSON. Recent titles are passed in so topics do not repeat. Server-side refusal fallback is enabled by default; if the request is declined or the API is unreachable the run silently uses the quote bank instead, so the schedule never breaks. Cost is well under a cent per video.
+Set `script.source: claude` (or `mixed`) and `ANTHROPIC_API_KEY`. Each run asks Claude Opus 5.5 for a 45–75 word original monologue on a rotating theme (discipline, starting before you feel ready, comparison, …), plus a title, description and tags, returned as validated JSON. Recent titles are passed in so topics do not repeat. Server-side refusal fallback is enabled by default; if the request is declined or the API is unreachable the run silently uses the quote bank instead, so the schedule never breaks. Expect roughly one to three cents per video (thinking tokens are billed as output).
 
 ## Commands
 
 ```
-python -m motivate run [--no-upload] [--privacy private|unlisted|public] [--count N] [--seed N] [--out DIR]
+python -m motivate run [--no-upload] [--record] [--privacy private|unlisted|public] [--count N] [--seed N] [--out DIR]
 python -m motivate authorize [--client-secret PATH] [--token PATH] [--no-browser]
 python -m motivate voices [--locale en-GB]
 python -m motivate stats
 python -m pytest            # unit tests (no network needed)
 ```
+
+`--no-upload` renders without touching `state/history.json`, so previews never use up quotes. Add `--record` when you render for manual upload and want the quote counted.
 
 ## Project layout
 
@@ -139,6 +143,7 @@ assets/
 ## What happens when something breaks
 
 - No Pexels key or Pexels down → gradient background, run continues.
+- Microsoft's TTS endpoint refuses the runner (happens occasionally for datacenter IPs) → four attempts with growing backoff, then the run fails; the next scheduled run retries.
 - Claude unavailable or declines → quote bank, run continues.
 - Dropped connection during upload → the resumable upload retries the chunk up to 6 times.
 - ffmpeg missing → the run stops immediately with an install hint instead of failing mid-render.

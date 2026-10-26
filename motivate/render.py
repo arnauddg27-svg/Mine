@@ -15,9 +15,17 @@ AUDIO_EXT = {".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac"}
 
 
 def esc(value: str | Path) -> str:
-    """Escape a path for use inside a quoted ffmpeg filter option."""
+    """Escape a path for use inside a single-quoted ffmpeg filter option.
+
+    ffmpeg tokenizes a filter string twice (graph level, then option level) and
+    does not process escapes inside quotes, so: backslashes and colons get one
+    backslash (passed through level 1 verbatim, unescaped at level 2), and a
+    single quote closes the quoted run, emits \\\\\\' (level 1 -> \\', level 2 -> ')
+    and reopens the quote.
+    """
     s = str(value)
-    return s.replace("\\", "\\\\").replace("'", "\\'").replace(":", "\\:")
+    s = s.replace("\\", "\\\\").replace(":", "\\:")
+    return s.replace("'", "'\\\\\\''")
 
 
 def pick_music(cfg: dict, rng: random.Random, assets_dir: Path) -> Path | None:

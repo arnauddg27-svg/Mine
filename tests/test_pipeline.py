@@ -160,7 +160,38 @@ def test_background_query_by_theme(cfg):
 
 
 def test_filter_escape():
-    assert render.esc("C:\\a'b") == "C\\:\\\\a\\'b"
+    # one backslash for \\ and :, and ' -> '\\\\\\'' (survives ffmpeg's two parsing levels)
+    assert render.esc("C:\\a'b") == "C\\:\\\\a'\\\\\\''b"
+
+
+def test_pexels_prune_keeps_chosen_clip(monkeypatch, tmp_path, cfg):
+    import copy, os, time as _time
+    from motivate import background
+
+    c = copy.deepcopy(cfg)
+    c["background"]["cache_keep"] = 1
+    old = tmp_path / "pexels_42_3.mp4"
+    old.write_bytes(b"old")
+    os.utime(old, (1, 1))  # ancient mtime: the cache hit is the oldest file
+    newer = tmp_path / "pexels_99_1.mp4"
+    newer.write_bytes(b"new")
+    payload = {"videos": [{
+        "id": 42, "duration": 12, "url": "u", "user": {"name": "X"},
+        "video_files": [{"id": 3, "width": 1080, "height": 1920, "file_type": "video/mp4", "link": "https://x/hd.mp4"}],
+    }]}
+
+    class Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return payload
+
+    monkeypatch.setenv("PEXELS_API_KEY", "test")
+    monkeypatch.setattr(background.requests, "get", lambda *a, **k: Resp())
+    bg = background.from_pexels(c, random.Random(0), tmp_path, min_duration=10)
+    assert bg.path == old and old.exists(), "the clip we are about to render must survive pruning"
+    assert not newer.exists()
 
 
 def test_block_captions(cfg):

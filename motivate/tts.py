@@ -130,7 +130,7 @@ async def _synth_once(text: str, voice: str, rate: str, pitch: str, out_mp3: Pat
     return words
 
 
-def synth_segment(text: str, voice: str, rate: str, pitch: str, out_mp3: Path, proxy: str | None, attempts: int = 3) -> list[Word]:
+def synth_segment(text: str, voice: str, rate: str, pitch: str, out_mp3: Path, proxy: str | None, attempts: int = 4) -> list[Word]:
     _patch_tls()
     last: Exception | None = None
     for i in range(attempts):
@@ -139,7 +139,7 @@ def synth_segment(text: str, voice: str, rate: str, pitch: str, out_mp3: Path, p
         except Exception as exc:  # network hiccups / transient 403s
             last = exc
             log.warning("edge-tts attempt %d/%d failed: %s", i + 1, attempts, exc)
-            time.sleep(2 * (i + 1))
+            time.sleep(4 * (i + 1))
     raise RuntimeError(f"edge-tts failed after {attempts} attempts: {last}")
 
 

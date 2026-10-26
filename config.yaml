@@ -1,6 +1,5 @@
-# Channel identity (shown as a small watermark and used in descriptions).
+# Channel identity: the handle is the on-screen watermark and the "Follow @handle" line in descriptions.
 channel:
-  name: "Daily Drive"
   handle: "@dailydrive"      # set to "" to hide the watermark
   language: en
 
@@ -81,11 +80,13 @@ background:
     mindset: [calm lake reflection, clouds timelapse, sunrise meditation]
     fear: [fog forest path, dark ocean night, thunderstorm]
   pexels_pages: 3                       # random result page 1..N for more variety
-  cache_keep: 24
+  cache_keep: 24                        # downloaded clips kept in .cache (oldest pruned)
+  # local_dir: assets/backgrounds       # folder scanned by the "local" source
 
 music:
   enabled: true              # drop royalty-free tracks into assets/music (mp3/wav)
   volume: 0.12
+  # dir: assets/music        # override the music folder
 
 video:
   width: 1080

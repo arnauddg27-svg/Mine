@@ -58,9 +58,13 @@ def _download(url: str, dst: Path, timeout: int = 120) -> None:
     tmp.replace(dst)
 
 
-def _prune_cache(cache_dir: Path, keep: int) -> None:
+def _prune_cache(cache_dir: Path, keep: int, protect: Path | None = None) -> None:
+    """Keep the ``keep`` most recent clips in total; ``protect`` is never removed."""
     files = sorted(cache_dir.glob("pexels_*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)
-    for stale in files[keep:]:
+    if protect in files:
+        files.remove(protect)
+        keep -= 1
+    for stale in files[max(keep, 0):]:
         try:
             stale.unlink()
         except OSError:
@@ -120,7 +124,8 @@ def from_pexels(
                 t0 = time.time()
                 _download(chosen["link"], dst)
                 log.info("downloaded %s (%dx%d) in %.1fs", dst.name, chosen["width"], chosen["height"], time.time() - t0)
-            _prune_cache(cache_dir, int(get(cfg, "background.cache_keep", 24)))
+            dst.touch()  # refresh mtime so a cache hit counts as recently used
+            _prune_cache(cache_dir, max(1, int(get(cfg, "background.cache_keep", 24))), protect=dst)
             user = (v.get("user") or {}).get("name", "Pexels contributor")
             credit = f"Footage: {user} via Pexels ({v.get('url', 'https://www.pexels.com')})"
             return Background("video", dst, None, credit, query, f"pexels:{v['id']}")

@@ -46,8 +46,19 @@ def choose_script(cfg: dict, rng: random.Random, state: State, assets_dir: Path)
     return script_mod.from_quote(q, cfg, rng, avoid_hooks=state.recent_values("hook", 3))
 
 
-def run_once(cfg: dict, *, upload: bool, privacy: str | None = None, seed: int | None = None, out_dir: Path | None = None) -> dict:
+def run_once(
+    cfg: dict,
+    *,
+    upload: bool,
+    privacy: str | None = None,
+    seed: int | None = None,
+    out_dir: Path | None = None,
+    record: bool | None = None,
+) -> dict:
+    """Produce one short. ``record`` (default: same as ``upload``) controls whether the
+    quote is marked used and the run is written to state/history.json."""
     t0 = time.time()
+    record = upload if record is None else record
     check_tools()
     rng = random.Random(seed)
     assets_dir = Path(get(cfg, "paths.assets"))
@@ -123,20 +134,22 @@ def run_once(cfg: dict, *, upload: bool, privacy: str | None = None, seed: int |
         )
         meta["video_id"] = video_id
         meta["url"] = f"https://youtube.com/shorts/{video_id}"
-    hook = next((s.text for s in script.segments if s.role == "hook"), None)
-    state.record_upload(
-        video_id=video_id,
-        title=script.title,
-        source=script.source,
-        quote_id=script.quote_id,
-        privacy=privacy if upload else "not-uploaded",
-        hook=hook,
-        background_id=bg.id,
-    )
-
-    if script.quote_id:
-        state.mark_quote(script.quote_id)
-    state.save()
+    if record:
+        hook = next((s.text for s in script.segments if s.role == "hook"), None)
+        state.record_upload(
+            video_id=video_id,
+            title=script.title,
+            source=script.source,
+            quote_id=script.quote_id,
+            privacy=privacy if upload else "not-uploaded",
+            hook=hook,
+            background_id=bg.id,
+        )
+        if script.quote_id:
+            state.mark_quote(script.quote_id)
+        state.save()
+    else:
+        log.info("dry run: state/history.json left untouched (use --record to count this quote as used)")
     (workdir / "metadata.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
     meta["elapsed"] = round(time.time() - t0, 1)
     log.info("done in %.1fs -> %s", meta["elapsed"], out_mp4)
