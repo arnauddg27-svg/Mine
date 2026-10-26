@@ -27,6 +27,11 @@ def ass_color(hex_rgb: str | int, alpha: int = 0) -> str:
     return f"&H{alpha:02X}{b}{g}{r}".upper()
 
 
+def ass_override_color(hex_rgb: str | int) -> str:
+    """'RRGGBB' -> '&HBBGGRR&' for inline \\1c overrides (no alpha byte, trailing &)."""
+    return "&H" + ass_color(hex_rgb)[4:] + "&"
+
+
 def _clean(text: str) -> str:
     text = text.replace("{", "").replace("}", "").replace("\\", "")
     return text.strip()
@@ -66,7 +71,8 @@ def build_ass(track: VoiceTrack, script: Script, cfg: dict, total_duration: floa
     per_page = int(get(cfg, "captions.words_per_page", 3))
     upper = bool(get(cfg, "captions.uppercase", True))
     style = get(cfg, "captions.style", "karaoke")  # karaoke | block
-    highlight = ass_color(get(cfg, "captions.highlight_color", "FFD600"))
+    highlight = ass_override_color(get(cfg, "captions.highlight_color", "FFD600"))
+    offset = float(get(cfg, "captions.time_offset", 0.0))  # +0.1 shows captions 100 ms later
     base = ass_color(get(cfg, "captions.text_color", "FFFFFF"))
     outline = ass_color(get(cfg, "captions.outline_color", "000000"))
     shadow = ass_color("000000", alpha=0x80)
@@ -97,6 +103,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     def add(start: float, end: float, style_name: str, text: str, layer: int = 0) -> None:
         if end <= start:
             return
+        if style_name == "Word":
+            start, end = max(0.0, start + offset), max(0.0, end + offset)
         events.append(f"Dialogue: {layer},{_ts(start)},{_ts(end)},{style_name},,0,0,0,,{text}")
 
     segments = track.segments
@@ -116,7 +124,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 rendered = []
                 for ti, t in enumerate(texts):
                     if ti == wi:
-                        rendered.append(f"{{\\c{highlight}\\fscx{pop}\\fscy{pop}}}{t}{{\\r}}")
+                        rendered.append(f"{{\\1c{highlight}\\fscx{pop}\\fscy{pop}}}{t}{{\\r}}")
                     else:
                         rendered.append(t)
                 add(start, end, "Word", " ".join(rendered))

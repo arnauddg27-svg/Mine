@@ -34,6 +34,9 @@ class State:
     def recent_titles(self, n: int = 25) -> list[str]:
         return [u.get("title", "") for u in self.data.get("uploads", [])[-n:] if u.get("title")]
 
+    def recent_values(self, key: str, n: int) -> list[str]:
+        return [u[key] for u in self.data.get("uploads", [])[-n:] if u.get(key)]
+
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(json.dumps(self.data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

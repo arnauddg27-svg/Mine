@@ -61,7 +61,7 @@ def generate_script(cfg: dict, rng: random.Random, recent_titles: list[str]) -> 
         client = anthropic.Anthropic()
         response = client.beta.messages.create(
             model=model,
-            max_tokens=2000,
+            max_tokens=8000,  # thinking tokens count against this; only used tokens are billed
             betas=["server-side-fallback-2026-07-01"],
             fallbacks="default",
             system=SYSTEM,

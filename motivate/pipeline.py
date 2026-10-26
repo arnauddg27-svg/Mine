@@ -5,6 +5,7 @@ import json
 import logging
 import random
 import re
+import shutil
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,6 +16,12 @@ from .config import get
 from .state import State
 
 log = logging.getLogger(__name__)
+
+
+def check_tools() -> None:
+    missing = [t for t in ("ffmpeg", "ffprobe") if not shutil.which(t)]
+    if missing:
+        raise RuntimeError(f"{' and '.join(missing)} not found on PATH; install ffmpeg (apt install ffmpeg / brew install ffmpeg)")
 
 
 def _slug(text: str, n: int = 40) -> str:
@@ -36,11 +43,12 @@ def choose_script(cfg: dict, rng: random.Random, state: State, assets_dir: Path)
         state.reset_quotes()
         used = set()
     q = quotes.pick_quote(bank, used, rng, int(get(cfg, "script.max_quote_words", 36)))
-    return script_mod.from_quote(q, cfg, rng)
+    return script_mod.from_quote(q, cfg, rng, avoid_hooks=state.recent_values("hook", 3))
 
 
 def run_once(cfg: dict, *, upload: bool, privacy: str | None = None, seed: int | None = None, out_dir: Path | None = None) -> dict:
     t0 = time.time()
+    check_tools()
     rng = random.Random(seed)
     assets_dir = Path(get(cfg, "paths.assets"))
     cache_dir = Path(get(cfg, "paths.cache"))
@@ -53,7 +61,9 @@ def run_once(cfg: dict, *, upload: bool, privacy: str | None = None, seed: int |
     workdir.mkdir(parents=True, exist_ok=True)
     log.info("script [%s]: %s", script.source, script.title)
 
-    track = tts.synthesize(script.spoken(), cfg, workdir)
+    voices = get(cfg, "voice.names") or []
+    voice = rng.choice(list(voices)) if voices else None
+    track = tts.synthesize(script.spoken(), cfg, workdir, voice=voice)
     tail = float(get(cfg, "video.tail_seconds", 0.8))
     total = track.duration + tail
 
@@ -61,7 +71,7 @@ def run_once(cfg: dict, *, upload: bool, privacy: str | None = None, seed: int |
     ass_path = workdir / "captions.ass"
     ass_path.write_text(ass_text, encoding="utf-8")
 
-    bg = bg_mod.choose(cfg, rng, total, cache_dir, assets_dir)
+    bg = bg_mod.choose(cfg, rng, total, cache_dir, assets_dir, theme=script.theme, avoid_ids=set(state.recent_values("background_id", 30)))
     music = render.pick_music(cfg, rng, assets_dir)
     if music:
         log.info("music: %s", music.name)
@@ -86,7 +96,9 @@ def run_once(cfg: dict, *, upload: bool, privacy: str | None = None, seed: int |
         "theme": script.theme,
         "duration": round(duration, 2),
         "background": bg.kind,
+        "background_id": bg.id,
         "background_query": bg.query,
+        "voice": voice or get(cfg, "voice.name"),
         "music": music.name if music else None,
         "video": str(out_mp4),
         "segments": [{"role": s.role, "text": s.text} for s in script.segments],
@@ -107,12 +119,20 @@ def run_once(cfg: dict, *, upload: bool, privacy: str | None = None, seed: int |
             default_language=get(cfg, "channel.language", "en"),
             token_path=Path(get(cfg, "paths.token")),
             notify_subscribers=bool(get(cfg, "youtube.notify_subscribers", True)),
+            contains_synthetic_media=bool(get(cfg, "youtube.synthetic_media_label", False)),
         )
         meta["video_id"] = video_id
         meta["url"] = f"https://youtube.com/shorts/{video_id}"
-        state.record_upload(video_id=video_id, title=script.title, source=script.source, quote_id=script.quote_id, privacy=privacy)
-    else:
-        state.record_upload(video_id=None, title=script.title, source=script.source, quote_id=script.quote_id, privacy="not-uploaded")
+    hook = next((s.text for s in script.segments if s.role == "hook"), None)
+    state.record_upload(
+        video_id=video_id,
+        title=script.title,
+        source=script.source,
+        quote_id=script.quote_id,
+        privacy=privacy if upload else "not-uploaded",
+        hook=hook,
+        background_id=bg.id,
+    )
 
     if script.quote_id:
         state.mark_quote(script.quote_id)

@@ -8,7 +8,10 @@ channel:
 script:
   source: bank               # bank = public-domain quotes | claude = original AI scripts | mixed = both
   hook: true                 # speak a short attention line before the quote
-  cta: "Follow for your daily dose of motivation."   # "" to disable
+  cta:                       # one is picked per video; "" or [] to disable
+    - "Follow for your daily dose of motivation."
+    - "Follow for one of these every day."
+    - "Save this one for later."
   max_quote_words: 36
 
 # Optional Claude script writer (needs ANTHROPIC_API_KEY; only used when script.source is claude/mixed).
@@ -31,6 +34,7 @@ llm:
 # Voice (run `python -m motivate voices` to list options).
 voice:
   name: en-US-GuyNeural      # calm male; try en-US-ChristopherNeural, en-GB-RyanNeural, en-US-AriaNeural
+  # names: [en-US-GuyNeural, en-US-ChristopherNeural, en-GB-RyanNeural]   # uncomment to rotate voices per video
   rate: "-6%"
   pitch: "-2Hz"
   pause_after:               # seconds of silence after each segment
@@ -50,6 +54,7 @@ captions:
   highlight_color: "FFD600"
   outline_color: "000000"
   pop_scale: 108
+  time_offset: 0.0           # seconds; positive delays captions (TTS timestamps run ~0.1 s early)
   show_author: true
   show_brand: true
 
@@ -66,6 +71,16 @@ background:
     - snow mountain drone
     - gym workout dark
     - campfire night
+  tag_queries:                          # used instead of the list above when the quote's theme matches
+    resilience: [storm clouds timelapse, waves crashing rocks, mountain climber]
+    persistence: [runner training dawn, long road aerial, rowing sunrise]
+    courage: [cliff edge ocean, snow mountain drone, lightning storm]
+    discipline: [gym workout dark, boxing training, early morning city]
+    patience: [forest fog, river slow motion, snowfall night]
+    action: [highway night lights, city timelapse, sprint start]
+    mindset: [calm lake reflection, clouds timelapse, sunrise meditation]
+    fear: [fog forest path, dark ocean night, thunderstorm]
+  pexels_pages: 3                       # random result page 1..N for more variety
   cache_keep: 24
 
 music:
@@ -83,7 +98,7 @@ video:
   darken: 0.08
 
 youtube:
-  privacy: public            # private | unlisted | public  (start with private to test)
+  privacy: private           # private | unlisted | public. Start private, check a few uploads, then switch to public.
   category_id: "22"          # 22 = People & Blogs, 27 = Education, 24 = Entertainment
   title_suffix: " #shorts"
   tags: [motivation, motivational video, mindset, discipline, self improvement, stoicism, daily motivation, shorts]
@@ -91,3 +106,4 @@ youtube:
   made_for_kids: false
   notify_subscribers: true
   ai_disclosure: true        # append a one-line AI voiceover note to descriptions
+  synthetic_media_label: false   # also set YouTube's "altered or synthetic content" flag on each upload

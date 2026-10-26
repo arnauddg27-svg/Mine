@@ -47,10 +47,11 @@ Drop any royalty-free `.mp3` files into `assets/music/` and they are mixed under
    python -m motivate authorize
    ```
    This writes `token.json` (git-ignored).
-6. Test an upload as private first:
+6. Test an upload (the default privacy is `private`):
    ```bash
-   python -m motivate run --privacy private
+   python -m motivate run
    ```
+7. When you are happy with a few test uploads, set `youtube.privacy: public` in `config.yaml` and set `channel.handle` to your real handle. Until then the scheduler keeps uploading private videos.
 
 Quota: uploading costs 1,600 of the default 10,000 daily units, so up to 6 uploads per day fit without a quota increase.
 
@@ -80,17 +81,21 @@ Any machine with cron works too:
 |---|---|
 | `channel.handle` | watermark text and "Follow @handle" line in descriptions (`""` to hide) |
 | `script.source` | `bank` (public-domain quotes), `claude` (original AI-written scripts), `mixed` |
-| `script.hook` / `script.cta` | spoken opener / closer |
+| `script.hook` / `script.cta` | spoken opener (rotates through 16 lines, never the same as the last 3 videos) / closer (string or list, one picked per video) |
 | `voice.name`, `rate`, `pitch` | any edge-tts voice; list with `python -m motivate voices` |
+| `voice.names` | optional list; a different voice is picked for each video |
 | `voice.pause_after` | silence after each segment, in seconds |
 | `captions.*` | font, size, words per page, colours, `karaoke` or `block` style |
+| `captions.time_offset` | shift captions in seconds (TTS timestamps run about 0.1 s ahead of the audio; `0.1` delays them to match exactly) |
 | `background.sources` | order to try: `pexels`, `local` (`assets/backgrounds`), `gradient` |
 | `background.queries` | Pexels search terms; one is picked per video |
+| `background.tag_queries` | search terms per quote theme (resilience, courage, …) so footage matches the message; clips used in the last 30 videos are avoided |
 | `music.enabled`, `music.volume` | background music mix |
 | `video.max_seconds` | hard cap (default 59 s, raise up to 180 for longer Shorts) |
 | `youtube.privacy` | `private` while testing, then `public` |
 | `youtube.tags`, `hashtags`, `category_id` | upload metadata |
 | `youtube.ai_disclosure` | appends a one-line AI-voiceover note to every description |
+| `youtube.synthetic_media_label` | also sets YouTube's "altered or synthetic content" flag on the upload (off by default: a TTS voice reading a quote is not the realistic-deception case the label is for; turn it on if you prefer to over-disclose) |
 
 Environment overrides: `MOTIVATE_PRIVACY`, `MOTIVATE_VOICE`, `MOTIVATE_SCRIPT_SOURCE`, `YOUTUBE_TOKEN_FILE`, `YOUTUBE_CLIENT_SECRET_FILE`, `EDGE_TTS_PROXY`.
 
@@ -131,10 +136,20 @@ assets/
 .github/workflows/publish.yml   daily scheduler
 ```
 
+## What happens when something breaks
+
+- No Pexels key or Pexels down → gradient background, run continues.
+- Claude unavailable or declines → quote bank, run continues.
+- Dropped connection during upload → the resumable upload retries the chunk up to 6 times.
+- ffmpeg missing → the run stops immediately with an install hint instead of failing mid-render.
+- YouTube token expired or quota exhausted → run fails with a message saying exactly what to do; the video stays in the workflow artifacts.
+
 ## Things to know before going public
 
 - **Music**: only use tracks you may publish on YouTube (YouTube Audio Library, Pixabay Music, a paid library). Content ID claims are automatic.
 - **Pexels**: free for commercial use, attribution not required; the pipeline still credits the videographer in each description.
 - **Quotes**: all authors died before 1930 or the line is a proverb, so the words are public domain. Attribution follows common usage; review `assets/quotes.json` and remove anything you are not comfortable with.
-- **AI voice**: a text-to-speech reading of a quote is not deceptive synthetic media, but the description discloses it anyway (`youtube.ai_disclosure`).
+- **AI voice**: a text-to-speech reading of a quote is not deceptive synthetic media, but the description discloses it anyway (`youtube.ai_disclosure`), and `youtube.synthetic_media_label` can set YouTube's official flag too.
+- **Token lifetime**: if the Google OAuth app stays in "Testing" status, uploads stop after 7 days with a clear error in the Actions log. Publishing the app fixes it permanently.
+- **Quota**: a run that hits the daily YouTube quota fails with an explicit message; the rendered video is still saved as a workflow artifact so nothing is lost.
 - **Monetization**: YouTube's "repetitious content" rule targets channels that are mass-produced with little variation. Original Claude scripts, varied footage and voices, and your own hooks are the levers to stay on the right side of it.

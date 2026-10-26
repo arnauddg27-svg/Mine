@@ -78,8 +78,8 @@ def test_ass_captions(cfg):
     assert any(",Author," in l and "Japanese proverb" in l for l in lines)
     assert "SCROLLING." not in ass and "TODAY." not in ass, "trailing periods are stripped from captions"
     assert any(",Brand," in l for l in lines)
-    # highlighted word carries the colour override and a reset
-    assert "\\c&H00D6FF&" in ass or "\\c&H0000D6FF" in ass
+    # highlighted word carries the canonical colour override (&HBBGGRR&) and a reset
+    assert "{\\1c&H00D6FF&\\fscx108\\fscy108}" in ass
     assert "{\\r}" in ass
     # timestamps are non-decreasing per word event and end > start
     def parse(ts):
@@ -113,6 +113,50 @@ def test_align_punctuation():
 def test_ass_color():
     assert captions.ass_color("FFD600") == "&H0000D6FF"
     assert captions.ass_color("#102030", alpha=0x80) == "&H80302010"
+    assert captions.ass_color(0) == "&H00000000"  # YAML turns 000000 into int 0
+    assert captions.ass_override_color("FFD600") == "&H00D6FF&"
+
+
+def test_caption_time_offset(cfg):
+    import copy
+    c = copy.deepcopy(cfg)
+    c["captions"]["time_offset"] = 0.25
+    track = _fake_track()
+    s = script_mod.Script(segments=[], title="t", description="d", tags=[], author=None)
+    ass = captions.build_ass(track, s, c, total_duration=6.8)
+    first = next(l for l in ass.splitlines() if l.startswith("Dialogue:") and ",Word," in l)
+    assert first.split(",")[1] == "0:00:00.35"  # 0.10 + 0.25
+
+
+def test_even_words_fallback():
+    from motivate.tts import even_words
+    words = even_words("Fall seven times, stand up eight.", 3.0)
+    assert [w.text for w in words] == "Fall seven times, stand up eight.".split()
+    assert words[0].start >= 0.1 and words[-1].end <= 3.0
+    for a, b in zip(words, words[1:]):
+        assert b.start >= a.end - 1e-9
+
+
+def test_cta_and_hook_choice(cfg):
+    import copy
+    c = copy.deepcopy(cfg)
+    c["script"]["cta"] = ["A", "B"]
+    assert script_mod.pick_cta(c, random.Random(0)) in {"A", "B"}
+    c["script"]["cta"] = "Only one"
+    assert script_mod.pick_cta(c, random.Random(0)) == "Only one"
+    c["script"]["cta"] = ""
+    assert script_mod.pick_cta(c, random.Random(0)) == ""
+    avoid = script_mod.HOOKS[:-1]
+    assert script_mod.pick_hook(random.Random(0), avoid) == script_mod.HOOKS[-1]
+
+
+def test_background_query_by_theme(cfg):
+    import copy
+    from motivate import background
+    c = copy.deepcopy(cfg)
+    c["background"]["tag_queries"] = {"resilience": ["storm clouds"]}
+    assert background.pick_query(c, random.Random(0), "resilience") == "storm clouds"
+    assert background.pick_query(c, random.Random(0), "unknown-theme") in c["background"]["queries"]
 
 
 def test_filter_escape():
@@ -158,6 +202,9 @@ def test_pexels_picks_portrait_file(monkeypatch, tmp_path, cfg):
     monkeypatch.setattr(background.requests, "get", lambda *a, **k: Resp())
     monkeypatch.setattr(background, "_download", lambda url, dst: (downloaded.append(url), dst.write_bytes(b"x")))
     bg = background.from_pexels(cfg, random.Random(0), tmp_path, min_duration=15)
-    assert bg is not None and bg.kind == "video"
+    assert bg is not None and bg.kind == "video" and bg.id == "pexels:42"
     assert downloaded == ["https://x/hd.mp4"], "should prefer the smallest file that is at least 1920 tall"
     assert bg.path.exists() and "Jane Doe" in bg.credit
+    # a recently used clip is still usable when it is the only candidate
+    again = background.from_pexels(cfg, random.Random(0), tmp_path, min_duration=15, avoid_ids={"pexels:42"})
+    assert again is not None and again.id == "pexels:42"

@@ -18,7 +18,17 @@ HOOKS = [
     "One line that changes everything.",
     "Read this twice.",
     "Nobody told you this growing up.",
+    "If today feels heavy, listen.",
+    "Here is the truth about hard days.",
+    "Send this to someone who needs it.",
+    "Write this down somewhere you'll see it.",
+    "Before you quit, hear this.",
+    "This took me years to understand.",
+    "Keep this in your pocket today.",
+    "Most people never hear this in time.",
 ]
+
+DEFAULT_CTAS = ["Follow for your daily dose of motivation."]
 
 MAX_TITLE = 100
 MAX_TAGS_CHARS = 480
@@ -81,12 +91,24 @@ def title_from_quote(q: Quote, suffix: str) -> str:
     return safe_title(f'"{short}…" - {q.author}', suffix)
 
 
-def from_quote(q: Quote, cfg: dict, rng: random.Random) -> Script:
+def pick_cta(cfg: dict, rng: random.Random) -> str:
+    cta = get(cfg, "script.cta", DEFAULT_CTAS)
+    if isinstance(cta, list):
+        return rng.choice(cta) if cta else ""
+    return str(cta or "")
+
+
+def pick_hook(rng: random.Random, avoid: list[str] | None = None) -> str:
+    pool = [h for h in HOOKS if h not in (avoid or [])] or HOOKS
+    return rng.choice(pool)
+
+
+def from_quote(q: Quote, cfg: dict, rng: random.Random, avoid_hooks: list[str] | None = None) -> Script:
     segments: list[Segment] = []
     if get(cfg, "script.hook", True):
-        segments.append(Segment("hook", rng.choice(HOOKS)))
+        segments.append(Segment("hook", pick_hook(rng, avoid_hooks)))
     segments.append(Segment("quote", q.text))
-    cta = get(cfg, "script.cta", "")
+    cta = pick_cta(cfg, rng)
     if cta:
         segments.append(Segment("cta", cta))
 
@@ -117,7 +139,7 @@ def from_llm(data: dict, cfg: dict, theme: str) -> Script:
     if data.get("hook"):
         segments.append(Segment("hook", data["hook"].strip()))
     segments.append(Segment("body", data["body"].strip()))
-    cta = get(cfg, "script.cta", "")
+    cta = pick_cta(cfg, random.Random(hash(data["body"])))
     if cta:
         segments.append(Segment("cta", cta))
     suffix = get(cfg, "youtube.title_suffix", " #shorts")

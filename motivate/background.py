@@ -36,6 +36,15 @@ class Background:
     lavfi: str | None = None
     credit: str | None = None
     query: str | None = None
+    id: str | None = None  # e.g. "pexels:12345", used to avoid repeats
+
+
+def pick_query(cfg: dict, rng: random.Random, theme: str | None) -> str:
+    """Prefer search terms mapped to the script's theme, else any configured query."""
+    by_tag = get(cfg, "background.tag_queries", {}) or {}
+    if theme and by_tag.get(theme):
+        return rng.choice(list(by_tag[theme]))
+    return rng.choice(list(get(cfg, "background.queries", ["mountain sunrise"])))
 
 
 def _download(url: str, dst: Path, timeout: int = 120) -> None:
@@ -58,25 +67,42 @@ def _prune_cache(cache_dir: Path, keep: int) -> None:
             pass
 
 
-def from_pexels(cfg: dict, rng: random.Random, cache_dir: Path, min_duration: float) -> Background | None:
+def _pexels_search(key: str, query: str, page: int) -> list[dict]:
+    r = requests.get(
+        PEXELS_SEARCH,
+        headers={"Authorization": key},
+        params={"query": query, "orientation": "portrait", "size": "medium", "per_page": 40, "page": page},
+        timeout=30,
+    )
+    r.raise_for_status()
+    return list(r.json().get("videos", []))
+
+
+def from_pexels(
+    cfg: dict,
+    rng: random.Random,
+    cache_dir: Path,
+    min_duration: float,
+    theme: str | None = None,
+    avoid_ids: set[str] | None = None,
+) -> Background | None:
     key = os.environ.get("PEXELS_API_KEY")
     if not key:
         log.info("PEXELS_API_KEY not set; skipping stock footage")
         return None
-    queries = list(get(cfg, "background.queries", ["mountain sunrise"]))
-    query = rng.choice(queries)
+    query = pick_query(cfg, rng, theme)
+    avoid = avoid_ids or set()
     try:
-        r = requests.get(
-            PEXELS_SEARCH,
-            headers={"Authorization": key},
-            params={"query": query, "orientation": "portrait", "size": "medium", "per_page": 40},
-            timeout=30,
-        )
-        r.raise_for_status()
-        videos = [v for v in r.json().get("videos", []) if v.get("duration", 0) >= max(4, min_duration / 3)]
+        page = rng.randint(1, int(get(cfg, "background.pexels_pages", 3)))
+        videos = _pexels_search(key, query, page)
+        if not videos and page != 1:
+            videos = _pexels_search(key, query, 1)
+        videos = [v for v in videos if v.get("duration", 0) >= max(4, min_duration / 3)]
     except Exception as exc:
         log.warning("Pexels search failed (%s): %s", query, exc)
         return None
+    fresh = [v for v in videos if f"pexels:{v.get('id')}" not in avoid]
+    videos = fresh or videos
     rng.shuffle(videos)
     cache_dir.mkdir(parents=True, exist_ok=True)
     for v in videos[:6]:
@@ -96,7 +122,8 @@ def from_pexels(cfg: dict, rng: random.Random, cache_dir: Path, min_duration: fl
                 log.info("downloaded %s (%dx%d) in %.1fs", dst.name, chosen["width"], chosen["height"], time.time() - t0)
             _prune_cache(cache_dir, int(get(cfg, "background.cache_keep", 24)))
             user = (v.get("user") or {}).get("name", "Pexels contributor")
-            return Background("video", dst, None, f"Footage: {user} via Pexels ({v.get('url', 'https://www.pexels.com')})", query)
+            credit = f"Footage: {user} via Pexels ({v.get('url', 'https://www.pexels.com')})"
+            return Background("video", dst, None, credit, query, f"pexels:{v['id']}")
         except Exception as exc:
             log.warning("download failed for Pexels video %s: %s", v.get("id"), exc)
     return None
@@ -110,7 +137,7 @@ def from_local(cfg: dict, rng: random.Random, assets_dir: Path) -> Background | 
     if not clips:
         return None
     clip = rng.choice(clips)
-    return Background("video", clip, None, None, None)
+    return Background("video", clip, None, None, None, f"local:{clip.name}")
 
 
 def gradient(cfg: dict, rng: random.Random, duration: float) -> Background:
@@ -131,12 +158,20 @@ def gradient(cfg: dict, rng: random.Random, duration: float) -> Background:
     return Background("gradient", None, lavfi, None, None)
 
 
-def choose(cfg: dict, rng: random.Random, duration: float, cache_dir: Path, assets_dir: Path) -> Background:
+def choose(
+    cfg: dict,
+    rng: random.Random,
+    duration: float,
+    cache_dir: Path,
+    assets_dir: Path,
+    theme: str | None = None,
+    avoid_ids: set[str] | None = None,
+) -> Background:
     order = get(cfg, "background.sources", ["pexels", "local", "gradient"])
     for source in order:
         bg: Background | None = None
         if source == "pexels":
-            bg = from_pexels(cfg, rng, cache_dir, duration)
+            bg = from_pexels(cfg, rng, cache_dir, duration, theme, avoid_ids)
         elif source == "local":
             bg = from_local(cfg, rng, assets_dir)
         elif source == "gradient":

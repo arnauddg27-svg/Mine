@@ -47,7 +47,16 @@ def load_credentials(token_path: Path):
     creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
     if not creds.valid:
         if creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+            from google.auth.exceptions import RefreshError
+
+            try:
+                creds.refresh(Request())
+            except RefreshError as exc:
+                raise RuntimeError(
+                    "YouTube refresh token was rejected (expired or revoked). If the OAuth app is still in "
+                    "'Testing' status its tokens die after 7 days: publish the app, then re-run "
+                    "`python -m motivate authorize` and update the YOUTUBE_TOKEN_JSON secret."
+                ) from exc
             token_path.write_text(creds.to_json(), encoding="utf-8")
         else:
             raise RuntimeError("stored YouTube credentials are invalid; re-run `python -m motivate authorize`")
@@ -67,7 +76,9 @@ def upload_video(
     default_language: str = "en",
     token_path: Path,
     notify_subscribers: bool = True,
+    contains_synthetic_media: bool = False,
 ) -> str:
+    import httplib2
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
     from googleapiclient.http import MediaFileUpload
@@ -80,6 +91,8 @@ def upload_video(
         # Scheduled publishing requires the video to start private.
         status["privacyStatus"] = "private"
         status["publishAt"] = publish_at
+    if contains_synthetic_media:
+        status["containsSyntheticMedia"] = True
     body = {
         "snippet": {
             "title": title[:100],
@@ -102,10 +115,25 @@ def upload_video(
             if progress:
                 log.info("upload %.0f%%", progress.progress() * 100)
         except HttpError as exc:
+            text = str(exc)
+            if exc.resp.status == 403 and "quotaExceeded" in text:
+                raise RuntimeError(
+                    "YouTube Data API daily quota exhausted (10,000 units/day; each upload costs ~1,600). "
+                    "Wait for the midnight Pacific reset or request a quota increase in Google Cloud Console."
+                ) from exc
             if exc.resp.status in RETRIABLE and attempt < 6:
                 attempt += 1
                 wait = 2 ** attempt
                 log.warning("YouTube returned %s; retrying in %ss", exc.resp.status, wait)
+                time.sleep(wait)
+                continue
+            raise
+        except (OSError, httplib2.HttpLib2Error) as exc:
+            # Dropped connection mid-upload: the resumable session survives, just retry the chunk.
+            if attempt < 6:
+                attempt += 1
+                wait = 2 ** attempt
+                log.warning("connection error during upload (%s); retrying in %ss", exc, wait)
                 time.sleep(wait)
                 continue
             raise

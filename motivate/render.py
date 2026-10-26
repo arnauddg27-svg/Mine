@@ -94,6 +94,12 @@ def render(
     ]
     log.info("rendering %s (%.1fs)", out_path.name, total)
     proc = subprocess.run(args, capture_output=True, text=True)
+    if proc.returncode != 0 and background.kind != "video":
+        # Older ffmpeg builds lack some `gradients` options; fall back to a flat colour.
+        log.warning("gradient background failed (%s); retrying with a flat colour", proc.stderr.strip().splitlines()[-1:] or "?")
+        idx = args.index("-i", args.index("lavfi"))
+        args[idx + 1] = f"color=c=0x1b1f4a:s={w}x{h}:r={fps}:d={total + 1:.2f}"
+        proc = subprocess.run(args, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(f"ffmpeg failed:\n{proc.stderr[-4000:]}")
     return out_path, ffprobe_duration(out_path)

@@ -84,6 +84,22 @@ def align_punctuation(words: list[Word], text: str) -> list[Word]:
     return out
 
 
+def even_words(text: str, duration: float, lead: float = 0.15, tail: float = 0.1) -> list[Word]:
+    """Fallback timing when the service returns no word boundaries: spread words evenly."""
+    tokens = text.split()
+    if not tokens:
+        return []
+    usable = max(duration - lead - tail, 0.2)
+    weights = [max(len(_key(t)), 1) for t in tokens]
+    scale = usable / sum(weights)
+    out: list[Word] = []
+    t = lead
+    for tok, wgt in zip(tokens, weights):
+        out.append(Word(tok, t, t + wgt * scale))
+        t += wgt * scale
+    return out
+
+
 def _patch_tls() -> None:
     """edge-tts pins certifi; add a corporate/proxy CA bundle when one is configured."""
     cafile = os.environ.get("SSL_CERT_FILE") or os.environ.get("REQUESTS_CA_BUNDLE")
@@ -142,10 +158,10 @@ def _to_wav(src: Path, dst: Path) -> None:
     )
 
 
-def synthesize(segments: list[Segment], cfg: dict, workdir: Path) -> VoiceTrack:
+def synthesize(segments: list[Segment], cfg: dict, workdir: Path, voice: str | None = None) -> VoiceTrack:
     """Synthesize each segment separately, then join them with configurable pauses."""
     workdir.mkdir(parents=True, exist_ok=True)
-    voice = get(cfg, "voice.name", "en-US-GuyNeural")
+    voice = voice or get(cfg, "voice.name", "en-US-GuyNeural")
     rate = get(cfg, "voice.rate", "+0%")
     pitch = get(cfg, "voice.pitch", "+0Hz")
     pauses = get(cfg, "voice.pause_after", {}) or {}
@@ -164,6 +180,9 @@ def synthesize(segments: list[Segment], cfg: dict, workdir: Path) -> VoiceTrack:
         words = align_punctuation(synth_segment(text, voice, rate, pitch, mp3, proxy), text)
         _to_wav(mp3, wav)
         dur = ffprobe_duration(wav)
+        if not words:
+            log.warning("no word timestamps for segment %d; spreading words evenly", i)
+            words = even_words(text, dur)
         shifted = [Word(w.text, cursor + w.start, cursor + min(w.end, dur)) for w in words]
         spoken.append(SpokenSegment(seg.role, text, cursor, cursor + dur, shifted))
         wavs.append(wav)
